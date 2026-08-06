@@ -28,7 +28,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("server starting on :%s", cfg.Port)
+	log.Printf("server running at http://localhost:%s", cfg.Port)
 	if err := application.Start(); err != nil {
 		log.Fatalf("server stopped with error: %v", err)
 	}

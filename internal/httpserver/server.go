@@ -21,8 +21,10 @@ func New(cfg config.Config) (*Server, error) {
 		return nil, fmt.Errorf("static dir check failed: %w", err)
 	}
 
+	lobbyHandler := newLobbyWSHandler()
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", wsHandler)
+	mux.HandleFunc("/ws", lobbyHandler.Handle)
 	mux.Handle("/", staticHandler(cfg.StaticDir))
 
 	httpSrv := &http.Server{

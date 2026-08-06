@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lobby Backend Test</title>
+  <link rel="stylesheet" href="./lobby-test.css">
+</head>
+<body>
+  <main class="panel">
+    <h1>Lobby Backend Test Page</h1>
+    <p class="note">Temporary debug page. Not part of the real game UI.</p>
+
+    <section class="row">
+      <label for="nickname">Nickname</label>
+      <input id="nickname" type="text" placeholder="Enter nickname" maxlength="32">
+      <button id="connectBtn" type="button">Connect</button>
+    </section>
+
+    <section class="row status-row">
+      <strong>Status:</strong>
+      <span id="status" class="status disconnected">Disconnected</span>
+    </section>
+
+    <section>
+      <h2>Server Messages</h2>
+      <pre id="messages" class="messages" aria-live="polite"></pre>
+    </section>
+
+    <section class="row">
+      <label for="outgoing">Send text</label>
+      <input id="outgoing" type="text" placeholder="Type a simple message">
+      <button id="sendBtn" type="button" disabled>Send</button>
+    </section>
+  </main>
+
+  <script src="./lobby-test.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.panel {
+  max-width: 860px;
+  margin: 2rem auto;
+  padding: 1rem;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
+
+h1 {
+  margin-top: 0;
+}
+
+.note {
+  margin-top: 0;
+  color: #4b5563;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+
+label {
+  min-width: 90px;
+}
+
+input {
+  flex: 1 1 260px;
+  padding: 0.5rem;
+  border: 1px solid #9ca3af;
+  border-radius: 4px;
+}
+
+button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  background: #111827;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.status-row {
+  margin-top: 1rem;
+}
+
+.status.connected {
+  color: #166534;
+}
+
+.status.connecting {
+  color: #92400e;
+}
+
+.status.disconnected {
+  color: #991b1b;
+}
+
+.messages {
+  height: 280px;
+  overflow: auto;
+  padding: 0.75rem;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
