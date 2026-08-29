@@ -47,3 +47,8 @@ func (s *Service) DisconnectPlayer(playerID string) int {
 func (s *Service) PlayerCount() int {
 	return s.repo.Count()
 }
+
+// Players returns all connected players in join order.
+func (s *Service) Players() []Player {
+	return s.repo.List()
+}
