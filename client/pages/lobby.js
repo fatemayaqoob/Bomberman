@@ -1,43 +1,65 @@
 import { element } from "../../framework/element.js";
-
-const MAX_PLAYERS = 4;
+import { MAX_PLAYERS, setLobbyCount } from "../ui-state.js";
 
 export function LobbyPage({ state }) {
     const { players, phase, secondsRemaining } = state.lobby;
-    const countdownLabel = phase === "ready" ? "Get ready!" : "Waiting for players";
+    let statusLabel = "MATCH STARTS IN";
+
+    if (players.length < 2) {
+        statusLabel = "WAITING FOR PLAYERS...";
+    } else if (phase === "ready") {
+        statusLabel = "GET READY!";
+    }
+
+    const statusText = players.length >= 2
+        ? `${statusLabel} ${secondsRemaining}s`
+        : statusLabel;
 
     return element(
         "section",
-        { className: "lobby-page" },
-        // TODO: Add lobby background artwork and player avatar/ready-status icons here.
-        element("h1", {}, "Lobby"),
+        { className: "screen screen--lobby" },
         element(
-            "p",
-            { className: "player-counter" },
-            `${players.length}/${MAX_PLAYERS} players joined`
-        ),
-        element(
-            "p",
-            { className: `lobby-countdown lobby-countdown--${phase}` },
-            `${countdownLabel}: ${secondsRemaining}s`
-        ),
-        element(
-            "ul",
-            { className: "lobby-player-list" },
-            players.length
-                ? players.map((player, index) =>
-                    element(
-                        "li",
-                        { className: "lobby-player", "data-player-id": player.id ?? index },
-                        player.nickname ?? player.name ?? `Player ${index + 1}`
-                    )
-                )
-                : element("li", { className: "lobby-player lobby-player--empty" }, "No players yet")
-        ),
-        element(
-            "p",
-            { className: "lobby-help" },
-            "The server decides when the countdown begins and when the match starts."
+            "div",
+            { className: "pixel-panel lobby-panel" },
+            element("p", { className: "eyebrow" }, "WAITING LOBBY"),
+            element("h1", {}, "BOMBERMAN"),
+            element("h2", {}, `PLAYERS ${players.length} / ${MAX_PLAYERS}`),
+            element(
+                "p",
+                { className: `lobby-status lobby-status--${phase}` },
+                statusText
+            ),
+            element(
+                "ol",
+                { className: "player-slots" },
+                Array.from({ length: MAX_PLAYERS }, (_, index) => {
+                    const player = players[index];
+                    const className = player
+                        ? "player-slot player-slot--filled"
+                        : "player-slot";
+                    const label = player
+                        ? `(PLAYER ${index + 1})  ${player.nickname}`
+                        : "WAITING...";
+
+                    return element("li", { className }, label);
+                })
+            ),
+            element(
+                "div",
+                { className: "lobby-demo-controls" },
+                element(
+                    "button",
+                    {
+                        type: "button",
+                        onClick: () => setLobbyCount(
+                            Math.min(MAX_PLAYERS, players.length + 1)
+                        ),
+                        disabled: players.length === MAX_PLAYERS
+                    },
+                    "ADD DEMO PLAYER"
+                ),
+                element("span", {}, "temporary just for now will edit later wallah")
+            )
         )
     );
 }

@@ -12,7 +12,7 @@ export function Chat({ messages }) {
             return;
         }
 
-        // TODO: Confirm chat payload fields and whether client messages should be optimistically shown.
+        // TODO: Confirm chat payload fields and optimistic message handling.
         if (sendSocketEvent(EVENTS.CHAT_SEND, { text })) {
             input.value = "";
             input.focus();
@@ -26,14 +26,14 @@ export function Chat({ messages }) {
         element(
             "ol",
             { className: "chat__messages", "aria-live": "polite" },
-            messages.map((message) =>
-                element(
+            messages.map((message) => {
+                return element(
                     "li",
                     { className: "chat__message", "data-message-id": message.id },
                     element("strong", {}, `${message.sender}: `),
                     message.text
-                )
-            )
+                );
+            })
         ),
         element(
             "form",

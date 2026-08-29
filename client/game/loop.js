@@ -10,7 +10,8 @@ export function startGameLoop({ update, render, onFps } = {}) {
             return;
         }
 
-        const deltaTime = Math.min((now - previousTime) / 1000, 0.1);
+        const elapsedSeconds = (now - previousTime) / 1000;
+        const deltaTime = Math.min(elapsedSeconds, 0.1);
         previousTime = now;
 
         update?.(deltaTime);
@@ -18,7 +19,10 @@ export function startGameLoop({ update, render, onFps } = {}) {
         fpsFrameCount += 1;
 
         if (now - fpsWindowStart >= 1000) {
-            onFps?.(Math.round(fpsFrameCount / ((now - fpsWindowStart) / 1000)));
+            const fpsWindowSeconds = (now - fpsWindowStart) / 1000;
+            const framesPerSecond = Math.round(fpsFrameCount / fpsWindowSeconds);
+
+            onFps?.(framesPerSecond);
             fpsFrameCount = 0;
             fpsWindowStart = now;
         }

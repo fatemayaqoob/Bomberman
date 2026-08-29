@@ -15,10 +15,16 @@ export function attachGameInput(sendInput) {
 
     function onKeyDown(event) {
         const action = KEY_TO_ACTION[event.code];
-        if (!action) return;
+
+        if (!action) {
+            return;
+        }
 
         event.preventDefault();
-        if (pressedActions.has(action)) return;
+
+        if (pressedActions.has(action)) {
+            return;
+        }
 
         pressedActions.add(action);
         sendInput?.({ action, pressed: true });
@@ -28,7 +34,10 @@ export function attachGameInput(sendInput) {
 
     function onKeyUp(event) {
         const action = KEY_TO_ACTION[event.code];
-        if (!action) return;
+
+        if (!action) {
+            return;
+        }
 
         event.preventDefault();
         pressedActions.delete(action);

@@ -1,62 +1,44 @@
 import { element } from "../../framework/element.js";
-import { EVENTS, sendSocketEvent } from "../main.js";
+import { submitNickname } from "../ui-state.js";
 
-export function NicknamePage({ state, store }) {
-    function submitNickname(event) {
+export function NicknamePage() {
+    function submit(event) {
         event.preventDefault();
 
-        const nickname = event.currentTarget.elements.nickname.value.trim();
+        const nicknameInput = event.currentTarget.elements.nickname;
+        const submitted = submitNickname(nicknameInput.value);
 
-        if (!nickname) {
-            store.setState({
-                connection: {
-                    ...store.getState().connection,
-                    error: "Please enter a nickname."
-                }
-            });
-            return;
+        if (!submitted) {
+            nicknameInput.focus();
         }
-
-        store.setState({
-            player: {
-                ...store.getState().player,
-                nickname
-            },
-            connection: {
-                ...store.getState().connection,
-                error: null
-            }
-        });
-
-        // TODO: confirm if backend requires diff nickname registration 
-        sendSocketEvent(EVENTS.NICKNAME_SUBMIT, { nickname });
     }
 
     return element(
         "section",
-        { className: "nickname-page" },
-        // TODO: Add the Bomberman title/logo artwork or a background illustration here.
-        element("h1", {}, "Bomberman"),
-        element("p", {}, "Choose a nickname to enter the lobby."),
+        { className: "screen screen--nickname" },
         element(
-            "form",
-            { onSubmit: submitNickname },
-            element("input", {
-                name: "nickname",
-                type: "text",
-                placeholder: "Nickname",
-                maxlength: 20,
-                autofocus: true,
-                autocomplete: "nickname"
-            }),
+            "div",
+            { className: "pixel-panel nickname-panel" },
+            element("h1", {}, "BOMBERMAN"),
             element(
-                "button",
-                { type: "submit", disabled: state.connection.status !== "connected" },
-                state.connection.status === "connecting" ? "Connecting…" : "Join lobby"
+                "p",
+                { className: "screen-copy" },
+                "Pick your nickname and join the waiting room"
+            ),
+            element(
+                "form",
+                { onSubmit: submit, className: "nickname-form" },
+                element("label", { for: "nickname" }, ""),
+                element("input", {
+                    id: "nickname",
+                    name: "nickname",
+                    maxlength: 16,
+                    autofocus: true,
+                    placeholder: "Player name",
+                    autocomplete: "nickname"
+                }),
+                element("button", { type: "submit" }, "ENTER LOBBY")
             )
-        ),
-        state.connection.error
-            ? element("p", { className: "form-error", role: "alert" }, state.connection.error)
-            : null
+        )
     );
 }

@@ -8,7 +8,7 @@ import (
 
 const (
 	defaultPort              = "8080"
-	defaultStaticDir         = "./framework"
+	defaultStaticDir         = "./client"
 	defaultReadHeaderTimeout = 5 * time.Second
 	defaultReadTimeout       = 10 * time.Second
 	defaultWriteTimeout      = 15 * time.Second
