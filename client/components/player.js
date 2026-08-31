@@ -19,7 +19,7 @@ export function Player({ player }) {
             style: `--col: ${player.col + 1}; --row: ${player.row + 1};`
         },
         element("img", {
-            src: `../static/assets/player/${animation}/${direction}${frame}.png`,
+            src: `/static/assets/player/${animation}/${direction}${frame}.png`,
             alt: player.nickname ?? "Player",
             draggable: false
         }),

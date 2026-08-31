@@ -1,8 +1,8 @@
 import { element } from "../../framework/element.js";
 
 const ASSETS = {
-    bomb: "../static/assets/bomb/bomb1.png",
-    flame: "../static/assets/explosion/explosion1.png"
+    bomb: "/static/assets/bomb/bomb1.png",
+    flame: "/static/assets/explosion/explosion1.gif"
 };
 
 // Render visual-only power-ups supplied by the UI state layer.

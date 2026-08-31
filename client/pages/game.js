@@ -5,6 +5,8 @@ import { HUD } from "../components/hud.js";
 import { PowerUpLayer } from "../components/powerups.js";
 
 export function GamePage({ state }) {
+    const gameOver = state.game.gameOver;
+    
     return element(
         "section",
         { className: "game-screen" },
@@ -12,13 +14,21 @@ export function GamePage({ state }) {
         element(
             "div",
             { className: "arena-stage" },
-            element(Map, {}),
+            element(Map, { grid: state.game.grid }),
             element(PowerUpLayer, { powerUps: state.game.powerUps }),
             element(
                 "div",
                 { className: "entity-layer", "aria-label": "Player preview" },
                 state.game.players.map((player) => element(Player, { player }))
-            )
+            ),
+            gameOver ? element(
+                "div",
+                { className: "game-over-overlay" },
+                element("div", { className: "game-over-panel" },
+                    element("h2", { className: "game-over-title" }, gameOver.message),
+                    element("p", { className: "game-over-hint" }, "Press R to restart")
+                )
+            ) : null
         )
     );
 }
