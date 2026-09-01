@@ -3,10 +3,12 @@ import { attachGameInput } from "./input.js";
 import { startGameLoop } from "./loop.js";
 
 // Connects the game engine to the existing keyboard and RAF helpers.
-export function startGameRuntime({ players, localPlayerID, onStateChange, onRestart, onFps }) {
+export function startGameRuntime({ players, localPlayerID, localPlayerNickname, onStateChange, onRestart, onFps }) {
     const engine = createGameEngine({ players });
     const activePlayers = engine.getState().players;
     const controlledPlayerID = activePlayers.find(({ id }) => id === localPlayerID)?.id
+        ?? activePlayers.find(({ nickname }) => nickname === localPlayerNickname)?.id
+        ?? activePlayers.find(({ slot }) => slot === 0)?.id
         ?? activePlayers[0]?.id;
     let lastRenderSignature = "";
 
@@ -14,8 +16,8 @@ export function startGameRuntime({ players, localPlayerID, onStateChange, onRest
         const state = engine.getState();
         const visualItems = [
             ...state.powerUps,
-            ...state.bombs.map((bomb) => ({ ...bomb, type: "bomb" })),
-            ...state.explosions.map((explosion) => ({ ...explosion, type: "flame" }))
+            ...state.bombs.map((bomb) => ({ ...bomb, type: "placed-bomb" })),
+            ...state.explosions.map((explosion) => ({ ...explosion, type: "placed-explosion" }))
         ];
         const signature = JSON.stringify({
             grid: state.grid.map((row) => row.map(({ type, variant, hitsRemaining, breakingFor }) => ({ type, variant, hitsRemaining, breakingFor }))),

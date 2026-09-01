@@ -468,10 +468,15 @@ button:disabled {
 .powerup-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+.powerup-group {
+  position: absolute;
+  inset: 0;
   display: grid;
   grid-template-columns: repeat(15, 1fr);
   grid-template-rows: repeat(13, 1fr);
-  pointer-events: none;
 }
 
 .powerup {
@@ -483,29 +488,37 @@ button:disabled {
   overflow: hidden;
 }
 
+.powerup span {
+  padding: 3px;
+  background: #fff7d8;
+  color: #183b58;
+  font-size: clamp(5px, 1vw, 10px);
+  font-weight: 900;
+  box-shadow: 2px 2px #0a202c;
+}
+
 .powerup img {
   width: 72%;
   height: 72%;
   object-fit: contain;
   image-rendering: pixelated;
-  max-width: 100%;
-  max-height: 100%;
 }
 
-.powerup--flame img {
-  width: 58%;
-  height: 58%;
-  max-width: 100%;
-  max-height: 100%;
+.powerup--placed-bomb img {
+  width: 88%;
+  height: 88%;
+}
+
+.powerup--bomb span {
+  background: #f3b6b6;
+}
+
+.powerup--flame span {
+  background: #ffd27d;
 }
 
 .powerup--speed span {
-  padding: 3px;
   background: #a7e6ee;
-  color: #183b58;
-  font-size: clamp(5px, 1vw, 10px);
-  font-weight: 900;
-  box-shadow: 2px 2px #0a202c;
 }
 
 .arena-player {

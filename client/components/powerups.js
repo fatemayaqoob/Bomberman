@@ -1,11 +1,16 @@
 import { element } from "../../framework/element.js";
 
 const ASSETS = {
-    bomb: "/static/assets/bomb/bomb1.png",
-    flame: "/static/assets/explosion/explosion1.gif"
+    "placed-bomb": "/static/assets/bomb/bomb1.png",
+    "placed-explosion": "/static/assets/explosion/explosion1.gif"
 };
 
-// Render visual-only power-ups supplied by the UI state layer.
+const LABELS = {
+    bomb: "B+",
+    speed: "S+",
+    flame: "F+"
+};
+
 export function PowerUpLayer({ powerUps = [] }) {
     return element(
         "div",
@@ -13,24 +18,39 @@ export function PowerUpLayer({ powerUps = [] }) {
             className: "powerup-layer",
             "aria-label": "Power-up preview"
         },
-        powerUps.map((powerUp) => {
-            const asset = ASSETS[powerUp.type];
-            const content = asset
-                ? element("img", {
-                    src: asset,
-                    alt: `${powerUp.type} power-up`,
-                    draggable: false
-                })
-                : element("span", { "aria-label": "speed power-up" }, "S+");
+        [
+            ["collectible", powerUps.filter(({ type }) => LABELS[type])],
+            ["bombs", powerUps.filter(({ type }) => type === "placed-bomb")],
+            ["explosions", powerUps.filter(({ type }) => type === "placed-explosion")]
+        ].map(([group, items]) => element(
+            "div",
+            { className: `powerup-group powerup-group--${group}` },
+            items.map((powerUp) => renderPowerUp(powerUp))
+        ))
+    );
+}
 
-            return element(
-                "div",
-                {
-                    className: `powerup powerup--${powerUp.type}`,
-                    style: `--col: ${powerUp.col + 1}; --row: ${powerUp.row + 1};`
-                },
-                content
-            );
+function renderPowerUp(powerUp) {
+    const asset = ASSETS[powerUp.type];
+    const content = asset
+        ? element("img", {
+            src: asset,
+            alt: powerUp.type === "placed-bomb" ? "Placed bomb" : "Explosion",
+            draggable: false
         })
+        : element(
+            "span",
+            { "aria-label": `${powerUp.type} power-up` },
+            LABELS[powerUp.type] ?? "?+"
+        );
+
+    return element(
+        "div",
+        {
+            className: `powerup powerup--${powerUp.type}`,
+            style: `--col: ${powerUp.col + 1}; --row: ${powerUp.row + 1};`,
+            "data-item-id": powerUp.id
+        },
+        content
     );
 }

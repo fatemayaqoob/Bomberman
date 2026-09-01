@@ -160,10 +160,13 @@ export function enterGame() {
     stopGameRuntime = startGameRuntime({
         players,
         localPlayerID: state.localPlayer.id,
+        localPlayerNickname: state.localPlayer.nickname,
         onRestart: enterGame,
         onStateChange: (engineState, visualItems) => {
             const current = getUIState();
-            const local = engineState.players.find((player) => player.id === current.localPlayer.id);
+            const local = engineState.players.find((player) => player.id === current.localPlayer.id)
+                ?? engineState.players.find((player) => player.nickname === current.localPlayer.nickname)
+                ?? engineState.players[0];
             uiStore?.setState({
                 game: {
                     ...current.game,

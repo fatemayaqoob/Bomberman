@@ -46,9 +46,12 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
     }
 
     function handleInput(playerID, action) {
-        if (state.gameOver || !findPlayer(playerID)?.alive) {
+        const player = findPlayer(playerID);
+        if (state.gameOver || !player?.alive) {
             return false;
         }
+
+        const collected = collectPowerUp(player);
 
         if (action === "place_bomb") {
             return placeBomb(playerID);
@@ -56,10 +59,12 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
 
         const direction = DIRECTIONS[action];
         if (!direction) {
+            if (collected) {
+                commit();
+            }
             return false;
         }
 
-        const player = findPlayer(playerID);
         player.direction = direction.facing;
         if (player.moveCooldown > 0) {
             commit();
@@ -92,6 +97,10 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
         let changed = false;
         let visualChanged = false;
         for (const player of state.players) {
+            if (player.alive && collectPowerUp(player)) {
+                changed = true;
+                visualChanged = true;
+            }
             if (player.moveCooldown > 0) {
                 player.moveCooldown = Math.max(0, player.moveCooldown - delta);
                 changed = true;
@@ -226,11 +235,18 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
         delete tile.breakingFor;
         tile.decoration = null;
         if (random() < GAME_CONSTANTS.dropChance) {
+            const dropPosition = isWalkable(tile.row, tile.column, null, true)
+                ? { row: tile.row, col: tile.column }
+                : adjacentGround({ row: tile.row, col: tile.column }, null);
+            if (!dropPosition) {
+                return;
+            }
+
             state.powerUps.push({
                 id: `power-up-${nextID++}`,
                 type: POWER_UP_TYPES[Math.floor(random() * POWER_UP_TYPES.length)],
-                row: tile.row,
-                col: tile.col
+                row: dropPosition.row,
+                col: dropPosition.col
             });
         }
     }
