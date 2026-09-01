@@ -1,27 +1,37 @@
+import { startGameRuntime } from "./game/runtime.js";
+
+const SESSION_KEY = "bomberman-session";
+
 let uiStore = null;
 let lobbyTimer = null;
+let stopGameRuntime = null;
 
 export const MAX_PLAYERS = 4;
 
 export function createInitialUIState() {
+    const savedSession = readSession();
+    const localPlayer = savedSession?.localPlayer ?? {
+        id: "player-1",
+        nickname: "",
+        lives: 3,
+        bombs: 1,
+        flame: 1,
+        speed: 1
+    };
+
     return {
         screen: "nickname",
-        localPlayer: {
-            id: "player-1",
-            nickname: "",
-            lives: 3,
-            bombs: 1,
-            flame: 1,
-            speed: 1
-        },
+        localPlayer,
         lobby: {
-            players: [],
+            players: savedSession?.players ?? [],
             phase: "waiting",
             secondsRemaining: 20
         },
         game: {
+            grid: [],
             players: [],
             powerUps: [],
+            gameOver: null,
             hud: {
                 lives: 3,
                 bombs: 1,
@@ -68,6 +78,7 @@ export function submitNickname(nickname) {
         }
     ]);
     setScreen("lobby");
+    persistSession();
 
     return true;
 }
@@ -83,6 +94,7 @@ export function setLobbyPlayers(players) {
             players: safePlayers
         }
     });
+    persistSession();
 
     if (safePlayers.length >= 2) {
         startLobbyWait();
@@ -140,25 +152,67 @@ export function enterGame() {
     clearInterval(lobbyTimer);
     lobbyTimer = null;
 
+    stopRunningGame();
     const state = getUIState();
-    uiStore?.setState({
-        game: {
-            ...state.game,
-            players: buildPreviewPlayers(state.lobby.players),
-            // UI-only preview icons. Backend/game-core can replace these through setPowerUps().
-            powerUps: [
-                { id: "preview-bomb", type: "bomb", col: 5, row: 3 },
-                { id: "preview-flame", type: "flame", col: 9, row: 9 },
-                { id: "preview-speed", type: "speed", col: 7, row: 6 }
-            ],
-            hud: {
-                ...state.game.hud,
-                ...state.localPlayer
-            }
+    const players = state.lobby.players.length
+        ? state.lobby.players
+        : [{ id: state.localPlayer.id, nickname: state.localPlayer.nickname || "Player 1", slot: 0 }];
+    stopGameRuntime = startGameRuntime({
+        players,
+        localPlayerID: state.localPlayer.id,
+        localPlayerNickname: state.localPlayer.nickname,
+        onRestart: enterGame,
+        onStateChange: (engineState, visualItems) => {
+            const current = getUIState();
+            const local = engineState.players.find((player) => player.id === current.localPlayer.id)
+                ?? engineState.players.find((player) => player.nickname === current.localPlayer.nickname)
+                ?? engineState.players[0];
+            uiStore?.setState({
+                game: {
+                    ...current.game,
+                    grid: engineState.grid,
+                    players: engineState.players.filter((player) => player.alive),
+                    powerUps: visualItems,
+                    gameOver: engineState.gameOver,
+                    hud: local ? {
+                        ...current.game.hud,
+                        lives: local.lives,
+                        bombs: local.bombs,
+                        flame: local.flame,
+                        speed: local.speed
+                    } : current.game.hud
+                }
+            });
         }
     });
 
     setScreen("game");
+}
+
+function stopRunningGame() {
+    stopGameRuntime?.();
+    stopGameRuntime = null;
+}
+
+function persistSession() {
+    try {
+        const state = getUIState();
+        window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+            localPlayer: state.localPlayer,
+            players: state.lobby.players
+        }));
+    } catch {
+        // Storage is optional; gameplay still works when it is unavailable.
+    }
+}
+
+function readSession() {
+    try {
+        const raw = window.sessionStorage.getItem(SESSION_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
 }
 
 function runCountdown(phase, seconds, complete) {

@@ -68,12 +68,15 @@ function createTile(row, column, random) {
     const type = !isSafeSpawn && random() < BLOCK_CHANCE
         ? "block"
         : "ground";
+    const variant = getBlockVariant(type, random);
 
     return {
         type,
         row,
         column,
-        variant: getBlockVariant(type, random),
+        variant,
+        hitsRemaining: getBlockHits(type, variant),
+        breakingFor: undefined,
         decoration: getDecoration(type, isSafeSpawn, random)
     };
 }
@@ -84,6 +87,14 @@ function getBlockVariant(type, random) {
     }
 
     return `block${1 + Math.floor(random() * 4)}`;
+}
+
+function getBlockHits(type, variant) {
+    if (type !== "block") {
+        return 0;
+    }
+
+    return variant === "block3" || variant === "block4" ? 1 : 2;
 }
 
 function getDecoration(type, isSafeSpawn, random) {

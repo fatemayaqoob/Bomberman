@@ -17,7 +17,7 @@ body {
   min-height: 100vh;
   margin: 0;
   background-color: #287b61;
-  background-image: url("../static/assets/lobby/ground/ground1.png");
+  background-image: url("/static/assets/lobby/ground/ground1.png");
   background-repeat: repeat;
   background-size: 48px 48px;
   image-rendering: pixelated;
@@ -297,9 +297,70 @@ button:disabled {
   box-shadow: 0 0 0 5px #0a202c, 12px 12px 0 #071921;
 }
 
+.game-over-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 10, 17, 0.92);
+  backdrop-filter: blur(4px);
+  animation: fade-in 0.3s ease-out;
+}
+
+.game-over-panel {
+  padding: 40px 48px;
+  text-align: center;
+  background: linear-gradient(135deg, #1a2636 0%, #2a3a4a 100%);
+  border: 8px solid #f4ac20;
+  border-radius: 12px;
+  box-shadow: 0 0 30px rgba(244, 172, 32, 0.4), 12px 12px 0 #0a202c;
+  max-width: 90vw;
+  animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.game-over-title {
+  margin: 0 0 24px;
+  color: #f4ac20;
+  font-size: clamp(1.2rem, 4vw, 2rem);
+  letter-spacing: 0.08em;
+  text-shadow: 3px 3px 0 #0d121d, 0 0 20px rgba(244, 172, 32, 0.3);
+  text-transform: uppercase;
+}
+
+.game-over-hint {
+  margin: 0;
+  color: #d7e3f1;
+  font-size: clamp(0.55rem, 1.8vw, 0.9rem);
+  text-shadow: 2px 2px #0d121d;
+  letter-spacing: 0.03em;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.5) rotateZ(-5deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.08) rotateZ(1deg);
+  }
+  100% {
+    transform: scale(1) rotateZ(0deg);
+    opacity: 1;
+  }
+}
+
 .arena-grid,
-.entity-layer,
-.powerup-layer {
+.entity-layer {
   position: absolute;
   inset: 0;
   display: grid;
@@ -324,17 +385,17 @@ button:disabled {
 }
 
 .arena-tile--ground {
-  background-image: url("../static/assets/lobby/ground/ground1.png");
+  background-image: url("/static/assets/lobby/ground/ground1.png");
   background-color: #287b61;
 }
 
 .arena-tile--wall {
-  background-image: url("../static/assets/lobby/tile.png");
+  background-image: url("/static/assets/lobby/tile.png");
   background-color: #132e45;
 }
 
 .arena-tile--trim {
-  background-image: url("../static/assets/lobby/block1.png");
+  background-image: url("/static/assets/lobby/block1.png");
   background-color: #183b58;
 }
 
@@ -343,19 +404,23 @@ button:disabled {
 }
 
 .arena-tile--block.arena-tile--block1 {
-  background-image: url("../static/assets/lobby/block1.png");
+  background-image: url("/static/assets/lobby/block1.png");
 }
 
 .arena-tile--block.arena-tile--block2 {
-  background-image: url("../static/assets/lobby/block2.png");
+  background-image: url("/static/assets/lobby/block2.png");
 }
 
 .arena-tile--block.arena-tile--block3 {
-  background-image: url("../static/assets/lobby/block3.png");
+  background-image: url("/static/assets/lobby/block3.png");
 }
 
 .arena-tile--block.arena-tile--block4 {
-  background-image: url("../static/assets/lobby/block4.png");
+  background-image: url("/static/assets/lobby/block4.png");
+}
+
+.arena-tile--breaking {
+  animation: block-break 0.18s steps(2) infinite;
 }
 
 .arena-decoration {
@@ -371,37 +436,47 @@ button:disabled {
 }
 
 .arena-decoration--flowers {
-  background-image: url("../static/assets/lobby/flowers.png");
+  background-image: url("/static/assets/lobby/flowers.png");
 }
 
 .arena-decoration--flowerpot {
-  background-image: url("../static/assets/lobby/flowerpot.png");
+  background-image: url("/static/assets/lobby/flowerpot.png");
 }
 
 .arena-decoration--grass {
-  background-image: url("../static/assets/lobby/grass.png");
+  background-image: url("/static/assets/lobby/grass.png");
 }
 
 .arena-decoration--grass1 {
-  background-image: url("../static/assets/lobby/grass1.png");
+  background-image: url("/static/assets/lobby/grass1.png");
 }
 
 .arena-decoration--grass2 {
-  background-image: url("../static/assets/lobby/grass2.png");
+  background-image: url("/static/assets/lobby/grass2.png");
 }
 
 .arena-decoration--grass3 {
-  background-image: url("../static/assets/lobby/grass3.png");
+  background-image: url("/static/assets/lobby/grass3.png");
 }
 
 .arena-decoration--grass4 {
-  background-image: url("../static/assets/lobby/grass4.png");
+  background-image: url("/static/assets/lobby/grass4.png");
 }
 
 /* ==================== POWER-UPS AND PLAYERS ==================== */
 
 .powerup-layer {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
+}
+
+.powerup-group {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  grid-template-rows: repeat(13, 1fr);
 }
 
 .powerup {
@@ -410,6 +485,16 @@ button:disabled {
   place-items: center;
   grid-column: var(--col);
   grid-row: var(--row);
+  overflow: hidden;
+}
+
+.powerup span {
+  padding: 3px;
+  background: #fff7d8;
+  color: #183b58;
+  font-size: clamp(5px, 1vw, 10px);
+  font-weight: 900;
+  box-shadow: 2px 2px #0a202c;
 }
 
 .powerup img {
@@ -419,18 +504,21 @@ button:disabled {
   image-rendering: pixelated;
 }
 
-.powerup--flame img {
-  width: 58%;
-  height: 58%;
+.powerup--placed-bomb img {
+  width: 88%;
+  height: 88%;
+}
+
+.powerup--bomb span {
+  background: #f3b6b6;
+}
+
+.powerup--flame span {
+  background: #ffd27d;
 }
 
 .powerup--speed span {
-  padding: 3px;
   background: #a7e6ee;
-  color: #183b58;
-  font-size: clamp(5px, 1vw, 10px);
-  font-weight: 900;
-  box-shadow: 2px 2px #0a202c;
 }
 
 .arena-player {
@@ -438,8 +526,7 @@ button:disabled {
   z-index: 3;
   display: grid;
   place-items: end center;
-  grid-column: var(--col);
-  grid-row: var(--row);
+  grid-area: var(--row) / var(--col);
   pointer-events: none;
 }
 
@@ -507,6 +594,19 @@ button:disabled {
 
   to {
     transform: translateY(-4%);
+  }
+}
+
+@keyframes block-break {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: translate(0, 0);
+  }
+
+  50% {
+    filter: brightness(1.8);
+    transform: translate(2px, -1px);
   }
 }
 

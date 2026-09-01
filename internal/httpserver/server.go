@@ -25,6 +25,8 @@ func New(cfg config.Config) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", lobbyHandler.Handle)
+	mux.Handle("/framework/", http.FileServer(http.Dir(cfg.StaticDir)))
+	mux.Handle("/static/", http.FileServer(http.Dir(cfg.StaticDir)))
 	mux.Handle("/", staticHandler(cfg.StaticDir))
 
 	httpSrv := &http.Server{
@@ -40,7 +42,7 @@ func New(cfg config.Config) (*Server, error) {
 }
 
 func staticHandler(staticDir string) http.Handler {
-	fileServer := http.FileServer(http.Dir(staticDir))
+	fileServer := http.FileServer(http.Dir(staticDir + "/client"))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
