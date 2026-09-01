@@ -3,6 +3,8 @@ import { Map } from "../components/map.js";
 import { Player } from "../components/player.js";
 import { HUD } from "../components/hud.js";
 import { PowerUpLayer } from "../components/powerups.js";
+import { HatLayer } from "../components/hat-layer.js";
+import { Chat } from "../components/chat.js";
 
 export function GamePage({ state }) {
     const gameOver = state.game.gameOver;
@@ -16,6 +18,7 @@ export function GamePage({ state }) {
             { className: "arena-stage" },
             element(Map, { grid: state.game.grid }),
             element(PowerUpLayer, { powerUps: state.game.powerUps }),
+            element(HatLayer, { players: state.game.players, lobbyPlayers: state.lobby.players }),
             element(
                 "div",
                 { className: "entity-layer", "aria-label": "Player preview" },
@@ -29,6 +32,7 @@ export function GamePage({ state }) {
                     element("p", { className: "game-over-hint" }, "Press R to restart")
                 )
             ) : null
-        )
+        ),
+        element(Chat, { chat: state.chat })
     );
 }

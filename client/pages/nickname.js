@@ -1,7 +1,9 @@
 import { element } from "../../framework/element.js";
 import { submitNickname } from "../ui-state.js";
+import { HatSelector } from "../components/hat-selector.js";
+import { getTakenHats } from "../ui-state.js";
 
-export function NicknamePage() {
+export function NicknamePage({ state }) {
     function submit(event) {
         event.preventDefault();
 
@@ -37,6 +39,7 @@ export function NicknamePage() {
                     placeholder: "Player name",
                     autocomplete: "nickname"
                 }),
+                element(HatSelector, { selectedHat: state.localPlayer.hat, takenHats: getTakenHats(state.lobby.players, state.localPlayer.id) }),
                 element("button", { type: "submit" }, "ENTER LOBBY")
             )
         )

@@ -1,5 +1,6 @@
 import { element } from "../../framework/element.js";
 import { MAX_PLAYERS, setLobbyCount } from "../ui-state.js";
+import { Chat } from "../components/chat.js";
 
 export function LobbyPage({ state }) {
     const { players, phase, secondsRemaining } = state.lobby;
@@ -60,6 +61,7 @@ export function LobbyPage({ state }) {
                 ),
                 element("span", {}, "temporary just for now will edit later wallah")
             )
-        )
+        ),
+        element(Chat, { chat: state.chat })
     );
 }

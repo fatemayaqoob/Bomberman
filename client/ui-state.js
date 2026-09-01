@@ -1,4 +1,5 @@
 import { startGameRuntime } from "./game/runtime.js";
+import { HAT_IDS } from "./game/cosmetics.js";
 
 const SESSION_KEY = "bomberman-session";
 
@@ -10,13 +11,16 @@ export const MAX_PLAYERS = 4;
 
 export function createInitialUIState() {
     const savedSession = readSession();
-    const localPlayer = savedSession?.localPlayer ?? {
-        id: "player-1",
-        nickname: "",
-        lives: 3,
-        bombs: 1,
-        flame: 1,
-        speed: 1
+    const localPlayer = {
+        ...(savedSession?.localPlayer ?? {
+            id: "player-1",
+            nickname: "",
+            lives: 3,
+            bombs: 1,
+            flame: 1,
+            speed: 1
+        }),
+        hat: savedSession?.localPlayer?.hat ?? "none"
     };
 
     return {
@@ -38,7 +42,9 @@ export function createInitialUIState() {
                 flame: 1,
                 speed: 1
             }
-        }
+        },
+        // UI-only chat preview. This intentionally has no external transport.
+        chat: { open: false, unread: 0, messages: [] }
     };
 }
 
@@ -66,7 +72,8 @@ export function submitNickname(nickname) {
     const state = getUIState();
     const localPlayer = {
         ...state.localPlayer,
-        nickname: cleanName
+        nickname: cleanName,
+        hat: chooseAvailableHat(state.localPlayer.hat, state.lobby.players, state.localPlayer.id)
     };
 
     uiStore?.setState({ localPlayer });
@@ -74,7 +81,8 @@ export function submitNickname(nickname) {
         {
             id: localPlayer.id,
             nickname: cleanName,
-            slot: 0
+            slot: 0,
+            hat: localPlayer.hat
         }
     ]);
     setScreen("lobby");
@@ -101,6 +109,30 @@ export function setLobbyPlayers(players) {
     } else {
         resetLobbyTimer();
     }
+}
+
+// LOCAL HAT AVAILABILITY STUB: renders exclusivity from the current UI roster only.
+// Replace this roster source later with a list whose player entries include { id, hat }.
+export function getTakenHats(players = getUIState().lobby.players, excludeID = null) {
+    return new Set(players.filter((player) => player.id !== excludeID && HAT_IDS.includes(player.hat)).map((player) => player.hat));
+}
+
+export function selectLocalHat(hat) {
+    if (!HAT_IDS.includes(hat)) return false;
+    const state = getUIState();
+    if (getTakenHats(state.lobby.players, state.localPlayer.id).has(hat)) return false;
+    const localPlayer = { ...state.localPlayer, hat };
+    const players = state.lobby.players.map((player) => player.id === localPlayer.id ? { ...player, hat } : player);
+    uiStore?.setState({ localPlayer, lobby: { ...state.lobby, players } });
+    persistSession();
+    return true;
+}
+
+function chooseAvailableHat(preferredHat, players, localPlayerID) {
+    const taken = getTakenHats(players, localPlayerID);
+    if (HAT_IDS.includes(preferredHat) && !taken.has(preferredHat)) return preferredHat;
+    const available = HAT_IDS.filter((hat) => !taken.has(hat));
+    return available[Math.floor(Math.random() * available.length)] ?? "none";
 }
 
 // Backend hook: a smaller helper when only the count is known.
@@ -278,6 +310,28 @@ export function setPowerUps(powerUps) {
             powerUps
         }
     });
+}
+
+export function openChat() {
+    const state = getUIState();
+    uiStore?.setState({ chat: { ...state.chat, open: true, unread: 0 } });
+}
+
+export function closeChat() {
+    const state = getUIState();
+    uiStore?.setState({ chat: { ...state.chat, open: false } });
+}
+
+// Local-only UI preview until chat has an agreed message source.
+export function sendLocalChatMessage(text) {
+    const message = text.trim();
+    if (!message) return false;
+    const state = getUIState();
+    uiStore?.setState({ chat: {
+        ...state.chat,
+        messages: [...state.chat.messages, { id: `${Date.now()}-${Math.random()}`, author: state.localPlayer.nickname || "YOU", text: message }].slice(-30)
+    } });
+    return true;
 }
 
 function updateGamePlayer(id, changes) {
