@@ -82,8 +82,9 @@
       return;
     }
 
-    socket.send(message);
-    appendMessage("client", message);
+    const payload = JSON.stringify({ type: "chat_message", message: message });
+    socket.send(payload);
+    appendMessage("client", payload);
     outgoingInput.value = "";
     outgoingInput.focus();
   }
