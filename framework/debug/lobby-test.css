@@ -86,3 +86,22 @@ button:disabled {
   border-radius: 6px;
   white-space: pre-wrap;
 }
+
+.players {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 6px;
+  min-height: 2rem;
+}
+
+.players li {
+  padding: 0.15rem 0;
+  font-family: monospace;
+}
+
+.players li.me {
+  color: #34d399;
+}

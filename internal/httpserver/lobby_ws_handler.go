@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"bomberman-dom/internal/chat"
+	"bomberman-dom/internal/game"
 	"bomberman-dom/internal/lobby"
 
 	"github.com/gorilla/websocket"
@@ -137,6 +138,8 @@ func (h *lobbyHub) handleIncoming(client *lobbyClient, payload []byte) {
 	switch envelope.Type {
 	case "chat_message":
 		h.handleChatMessage(client, envelope.Message)
+	case "player_move":
+		h.handlePlayerMove(client, payload)
 	default:
 		log.Printf("lobby ws: unknown message type %q", envelope.Type)
 	}
@@ -220,10 +223,12 @@ type lobbyClient struct {
 	conn     *websocket.Conn
 	writeMu  sync.Mutex
 	nickname string
+	playerID string
 }
 
 type lobbyHub struct {
 	room *lobby.Room
+	game *game.State
 
 	mu      sync.RWMutex
 	clients map[string]*lobbyClient
@@ -232,6 +237,7 @@ type lobbyHub struct {
 func newLobbyHub(service *lobby.Service) *lobbyHub {
 	h := &lobbyHub{
 		clients: make(map[string]*lobbyClient),
+		game:    game.NewState(),
 	}
 	h.room = lobby.NewRoom(service, h.broadcastSnapshot)
 
@@ -245,6 +251,7 @@ func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player,
 	}
 
 	client.nickname = player.Nickname
+	client.playerID = player.ID
 
 	h.mu.Lock()
 	h.clients[player.ID] = client
@@ -255,6 +262,11 @@ func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player,
 	// registered yet when the broadcast fired.
 	h.sendSnapshotTo(client, snapshot)
 
+	// Register the player in the authoritative sync state and let every
+	// connected client (including this new one) know about it.
+	h.game.Join(player.ID, player.Nickname)
+	h.broadcastGameState()
+
 	return player, nil
 }
 
@@ -264,6 +276,9 @@ func (h *lobbyHub) unregister(playerID string) {
 	h.mu.Unlock()
 
 	h.room.Leave(playerID)
+
+	h.game.Leave(playerID)
+	h.broadcastGameState()
 }
 
 type lobbyPlayerDTO struct {
