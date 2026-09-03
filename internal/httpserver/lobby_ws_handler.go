@@ -294,9 +294,14 @@ type lobbyStateMessage struct {
 	MaxPlayers       int              `json:"max_players"`
 	Players          []lobbyPlayerDTO `json:"players"`
 	CountdownSeconds *int             `json:"countdown_seconds,omitempty"`
+	SelfID           string           `json:"self_id,omitempty"`
 }
 
 func marshalSnapshot(snapshot lobby.Snapshot) ([]byte, error) {
+	return marshalSnapshotFor(snapshot, "")
+}
+
+func marshalSnapshotFor(snapshot lobby.Snapshot, selfID string) ([]byte, error) {
 	msg := lobbyStateMessage{
 		Type:        "lobby_state",
 		State:       string(snapshot.State),
@@ -304,6 +309,7 @@ func marshalSnapshot(snapshot lobby.Snapshot) ([]byte, error) {
 		MinPlayers:  snapshot.MinPlayers,
 		MaxPlayers:  snapshot.MaxPlayers,
 		Players:     make([]lobbyPlayerDTO, 0, len(snapshot.Players)),
+		SelfID:      selfID,
 	}
 
 	for _, p := range snapshot.Players {
@@ -322,12 +328,6 @@ func marshalSnapshot(snapshot lobby.Snapshot) ([]byte, error) {
 }
 
 func (h *lobbyHub) broadcastSnapshot(snapshot lobby.Snapshot) {
-	payload, err := marshalSnapshot(snapshot)
-	if err != nil {
-		log.Printf("lobby broadcast marshal failed: %v", err)
-		return
-	}
-
 	h.mu.RLock()
 	clients := make([]*lobbyClient, 0, len(h.clients))
 	for _, client := range h.clients {
@@ -336,6 +336,11 @@ func (h *lobbyHub) broadcastSnapshot(snapshot lobby.Snapshot) {
 	h.mu.RUnlock()
 
 	for _, client := range clients {
+		payload, err := marshalSnapshotFor(snapshot, client.playerID)
+		if err != nil {
+			log.Printf("lobby broadcast marshal failed: %v", err)
+			continue
+		}
 		if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
 			log.Printf("lobby broadcast failed: %v", err)
 		}
@@ -343,7 +348,7 @@ func (h *lobbyHub) broadcastSnapshot(snapshot lobby.Snapshot) {
 }
 
 func (h *lobbyHub) sendSnapshotTo(client *lobbyClient, snapshot lobby.Snapshot) {
-	payload, err := marshalSnapshot(snapshot)
+	payload, err := marshalSnapshotFor(snapshot, client.playerID)
 	if err != nil {
 		log.Printf("lobby snapshot marshal failed: %v", err)
 		return

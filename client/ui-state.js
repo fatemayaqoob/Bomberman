@@ -1,11 +1,12 @@
 import { startGameRuntime } from "./game/runtime.js";
 import { HAT_IDS } from "./game/cosmetics.js";
+import { sendPlayerMove } from "./network.js";
 
 const SESSION_KEY = "bomberman-session";
 
 let uiStore = null;
-let lobbyTimer = null;
 let stopGameRuntime = null;
+let countdownDisplayTimer = null;
 
 export const MAX_PLAYERS = 4;
 
@@ -27,10 +28,12 @@ export function createInitialUIState() {
         screen: "nickname",
         localPlayer,
         lobby: {
-            players: savedSession?.players ?? [],
+            players: [],
             phase: "waiting",
             secondsRemaining: 20
         },
+        connection: { status: "idle", error: null },
+        multiplayer: { players: [] },
         game: {
             grid: [],
             players: [],
@@ -77,38 +80,59 @@ export function submitNickname(nickname) {
     };
 
     uiStore?.setState({ localPlayer });
-    setLobbyPlayers([
-        {
-            id: localPlayer.id,
-            nickname: cleanName,
-            slot: 0,
-            hat: localPlayer.hat
-        }
-    ]);
-    setScreen("lobby");
     persistSession();
 
     return true;
 }
 
-// Backend hook: replace the lobby list with the authoritative player list.
-export function setLobbyPlayers(players) {
-    const safePlayers = players.slice(0, MAX_PLAYERS);
+// Applies the server lobby snapshot directly to the real UI.
+export function applyLobbyState(snapshot) {
     const state = getUIState();
+    const existingHats = new Map(state.lobby.players.map((player) => [player.id, player.hat]));
+    const players = (snapshot.players ?? []).slice(0, MAX_PLAYERS).map((player, slot) => ({
+        ...player,
+        slot,
+        hat: player.id === snapshot.self_id || player.nickname === state.localPlayer.nickname
+            ? state.localPlayer.hat
+            : existingHats.get(player.id) ?? "none"
+    }));
+
+    const phase = snapshot.state ?? "waiting";
+    const secondsRemaining = snapshot.countdown_seconds ?? (phase === "countdown" ? state.lobby.secondsRemaining : 20);
+
+    const localServerPlayer = players.find((player) => player.id === snapshot.self_id)
+        ?? players.find((player) => player.nickname === state.localPlayer.nickname);
+    const localPlayer = localServerPlayer
+        ? { ...state.localPlayer, id: localServerPlayer.id }
+        : state.localPlayer;
 
     uiStore?.setState({
-        lobby: {
-            ...state.lobby,
-            players: safePlayers
-        }
+        localPlayer,
+        lobby: { ...state.lobby, players, phase, secondsRemaining }
     });
-    persistSession();
 
-    if (safePlayers.length >= 2) {
-        startLobbyWait();
-    } else {
-        resetLobbyTimer();
+    if (phase === "countdown") startCountdownDisplay(secondsRemaining);
+    else stopCountdownDisplay();
+
+    if (phase === "started") {
+        enterGame();
+    } else if (state.screen !== "lobby") {
+        setScreen("lobby");
     }
+
+    persistSession();
+}
+
+export function setConnectionState(status) {
+    const state = getUIState();
+    uiStore?.setState({
+        connection: { ...state.connection, status, error: status === "connected" ? null : state.connection.error }
+    });
+}
+
+export function applyServerError(error) {
+    const state = getUIState();
+    uiStore?.setState({ connection: { ...state.connection, status: "error", error } });
 }
 
 // LOCAL HAT AVAILABILITY STUB: renders exclusivity from the current UI roster only.
@@ -135,54 +159,8 @@ function chooseAvailableHat(preferredHat, players, localPlayerID) {
     return available[Math.floor(Math.random() * available.length)] ?? "none";
 }
 
-// Backend hook: a smaller helper when only the count is known.
-export function setLobbyCount(count) {
-    const current = getUIState().lobby.players;
-    const playerCount = Math.min(count, MAX_PLAYERS);
-    const players = Array.from({ length: playerCount }, (_, index) => {
-        return current[index] ?? {
-            id: `slot-${index + 1}`,
-            nickname: `Player ${index + 1}`,
-            slot: index
-        };
-    });
-
-    setLobbyPlayers(players);
-}
-
-export function startLobbyWait() {
-    const lobby = getUIState().lobby;
-
-    if (lobby.phase !== "waiting" || lobby.secondsRemaining !== 20) {
-        return;
-    }
-
-    runCountdown("waiting", 20, beginReadyCountdown);
-}
-
-export function beginReadyCountdown() {
-    if (getUIState().lobby.players.length >= 2) {
-        runCountdown("ready", 10, enterGame);
-    }
-}
-
-export function resetLobbyTimer() {
-    clearInterval(lobbyTimer);
-    lobbyTimer = null;
-
-    const state = getUIState();
-    uiStore?.setState({
-        lobby: {
-            ...state.lobby,
-            phase: "waiting",
-            secondsRemaining: 20
-        }
-    });
-}
-
 export function enterGame() {
-    clearInterval(lobbyTimer);
-    lobbyTimer = null;
+    if (getUIState().screen === "game" && stopGameRuntime) return;
 
     stopRunningGame();
     const state = getUIState();
@@ -193,6 +171,7 @@ export function enterGame() {
         players,
         localPlayerID: state.localPlayer.id,
         localPlayerNickname: state.localPlayer.nickname,
+        onLocalPosition: sendPlayerMove,
         onRestart: enterGame,
         onStateChange: (engineState, visualItems) => {
             const current = getUIState();
@@ -203,7 +182,10 @@ export function enterGame() {
                 game: {
                     ...current.game,
                     grid: engineState.grid,
-                    players: engineState.players.filter((player) => player.alive),
+                    players: mergeNetworkPlayers(
+                        engineState.players.filter((player) => player.alive),
+                        current.multiplayer.players
+                    ),
                     powerUps: visualItems,
                     gameOver: engineState.gameOver,
                     hud: local ? {
@@ -247,37 +229,40 @@ function readSession() {
     }
 }
 
-function runCountdown(phase, seconds, complete) {
-    clearInterval(lobbyTimer);
+export function applyPlayerState(players = []) {
+    const state = getUIState();
+    const normalized = players.map((player) => ({
+        id: player.id,
+        nickname: player.nickname,
+        col: Math.round(player.x),
+        row: Math.round(player.y),
+        direction: toClientDirection(player.direction),
+        animation: "standing",
+        alive: player.alive
+    }));
+
     uiStore?.setState({
-        lobby: {
-            ...getUIState().lobby,
-            phase,
-            secondsRemaining: seconds
-        }
+        multiplayer: { ...state.multiplayer, players: normalized },
+        game: state.screen === "game"
+            ? { ...state.game, players: mergeNetworkPlayers(state.game.players, normalized) }
+            : state.game
     });
-
-    lobbyTimer = window.setInterval(() => {
-        const state = getUIState();
-        const secondsRemaining = Math.max(0, state.lobby.secondsRemaining - 1);
-
-        uiStore?.setState({
-            lobby: {
-                ...state.lobby,
-                phase,
-                secondsRemaining
-            }
-        });
-
-        if (secondsRemaining === 0) {
-            clearInterval(lobbyTimer);
-            lobbyTimer = null;
-            complete();
-        }
-    }, 1000);
 }
 
-// Game-core/backend hooks: update visual state only; no movement or collision rules live here.
+export function applyChatMessage(message) {
+    const state = getUIState();
+    uiStore?.setState({ chat: {
+        ...state.chat,
+        unread: state.chat.open ? 0 : state.chat.unread + 1,
+        messages: [...state.chat.messages, {
+            id: `${Date.now()}-${Math.random()}`,
+            author: message.nickname ?? "PLAYER",
+            text: message.message ?? ""
+        }].slice(-30)
+    } });
+}
+
+// Game-core/UI hooks: update rendered state without changing engine rules.
 export function updatePlayerPosition(id, position) {
     updateGamePlayer(id, position);
 }
@@ -323,17 +308,6 @@ export function closeChat() {
 }
 
 // Local-only UI preview until chat has an agreed message source.
-export function sendLocalChatMessage(text) {
-    const message = text.trim();
-    if (!message) return false;
-    const state = getUIState();
-    uiStore?.setState({ chat: {
-        ...state.chat,
-        messages: [...state.chat.messages, { id: `${Date.now()}-${Math.random()}`, author: state.localPlayer.nickname || "YOU", text: message }].slice(-30)
-    } });
-    return true;
-}
-
 function updateGamePlayer(id, changes) {
     const state = getUIState();
     const players = state.game.players.map((player) => {
@@ -353,6 +327,39 @@ function updateGamePlayer(id, changes) {
             players
         }
     });
+}
+
+function mergeNetworkPlayers(currentPlayers, networkPlayers) {
+    if (!networkPlayers.length) return currentPlayers;
+    return networkPlayers.map((networkPlayer) => {
+        const current = currentPlayers.find((player) => player.id === networkPlayer.id) ?? {};
+        return { ...current, ...networkPlayer };
+    });
+}
+
+function toClientDirection(direction) {
+    return ({ up: "back", down: "front", left: "left", right: "right" })[direction] ?? "front";
+}
+
+function startCountdownDisplay(seconds) {
+    stopCountdownDisplay();
+    countdownDisplayTimer = window.setInterval(() => {
+        const state = getUIState();
+        if (state.lobby.phase !== "countdown" || state.lobby.secondsRemaining <= 0) {
+            stopCountdownDisplay();
+            return;
+        }
+        uiStore?.setState({
+            lobby: { ...state.lobby, secondsRemaining: state.lobby.secondsRemaining - 1 }
+        });
+    }, 1000);
+}
+
+function stopCountdownDisplay() {
+    if (countdownDisplayTimer !== null) {
+        window.clearInterval(countdownDisplayTimer);
+        countdownDisplayTimer = null;
+    }
 }
 
 function buildPreviewPlayers(lobbyPlayers) {

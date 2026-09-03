@@ -1,5 +1,5 @@
 import { element } from "../../framework/element.js";
-import { MAX_PLAYERS, setLobbyCount } from "../ui-state.js";
+import { MAX_PLAYERS } from "../ui-state.js";
 import { Chat } from "../components/chat.js";
 
 export function LobbyPage({ state }) {
@@ -8,11 +8,11 @@ export function LobbyPage({ state }) {
 
     if (players.length < 2) {
         statusLabel = "WAITING FOR PLAYERS...";
-    } else if (phase === "ready") {
+    } else if (phase === "countdown") {
         statusLabel = "GET READY!";
     }
 
-    const statusText = players.length >= 2
+    const statusText = phase === "countdown"
         ? `${statusLabel} ${secondsRemaining}s`
         : statusLabel;
 
@@ -45,22 +45,6 @@ export function LobbyPage({ state }) {
                     return element("li", { className }, label);
                 })
             ),
-            element(
-                "div",
-                { className: "lobby-demo-controls" },
-                element(
-                    "button",
-                    {
-                        type: "button",
-                        onClick: () => setLobbyCount(
-                            Math.min(MAX_PLAYERS, players.length + 1)
-                        ),
-                        disabled: players.length === MAX_PLAYERS
-                    },
-                    "ADD DEMO PLAYER"
-                ),
-                element("span", {}, "temporary just for now will edit later wallah")
-            )
         ),
         element(Chat, { chat: state.chat })
     );

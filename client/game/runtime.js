@@ -3,7 +3,7 @@ import { attachGameInput } from "./input.js";
 import { startGameLoop } from "./loop.js";
 
 // Connects the game engine to the existing keyboard and RAF helpers.
-export function startGameRuntime({ players, localPlayerID, localPlayerNickname, onStateChange, onRestart, onFps }) {
+export function startGameRuntime({ players, localPlayerID, localPlayerNickname, onLocalPosition, onStateChange, onRestart, onFps }) {
     const engine = createGameEngine({ players });
     const activePlayers = engine.getState().players;
     const controlledPlayerID = activePlayers.find(({ id }) => id === localPlayerID)?.id
@@ -11,6 +11,7 @@ export function startGameRuntime({ players, localPlayerID, localPlayerNickname, 
         ?? activePlayers.find(({ slot }) => slot === 0)?.id
         ?? activePlayers[0]?.id;
     let lastRenderSignature = "";
+    let lastSentPosition = "";
 
     function publish() {
         const state = engine.getState();
@@ -33,6 +34,15 @@ export function startGameRuntime({ players, localPlayerID, localPlayerNickname, 
                 grid: state.grid.map((row) => row.map((tile) => ({ ...tile }))),
                 players: state.players.map((player) => ({ ...player }))
             }, visualItems);
+        }
+
+        const controlledPlayer = state.players.find((player) => player.id === controlledPlayerID);
+        if (controlledPlayer) {
+            const position = `${controlledPlayer.col}:${controlledPlayer.row}:${controlledPlayer.direction}`;
+            if (position !== lastSentPosition) {
+                lastSentPosition = position;
+                onLocalPosition?.({ col: controlledPlayer.col, row: controlledPlayer.row, direction: controlledPlayer.direction });
+            }
         }
     }
 
