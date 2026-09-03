@@ -59,20 +59,30 @@ func (h *lobbyWSHandler) handleConnection(conn *websocket.Conn) {
 		return
 	}
 
-	player, count, err := h.hub.register(client, nickname)
+	player, err := h.hub.register(client, nickname)
 	if err != nil {
 		log.Printf("lobby register failed: %v", err)
-		writeClientError(client.conn, "failed to join lobby")
+		writeClientError(client.conn, lobbyJoinErrorMessage(err))
 		return
 	}
 
-	defer func() {
-		newCount := h.hub.unregister(player.ID)
-		h.hub.broadcastCount(newCount)
-	}()
+	defer h.hub.unregister(player.ID)
 
-	h.hub.broadcastCount(count)
 	h.readUntilDisconnect(client.conn)
+}
+
+// lobbyJoinErrorMessage maps internal lobby errors to client-safe messages.
+func lobbyJoinErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, lobby.ErrLobbyFull):
+		return "lobby is full"
+	case errors.Is(err, lobby.ErrLobbyStarted):
+		return "game already in progress"
+	case errors.Is(err, lobby.ErrEmptyNickname):
+		return "nickname is required"
+	default:
+		return "failed to join lobby"
+	}
 }
 
 func (h *lobbyWSHandler) readUntilDisconnect(conn *websocket.Conn) {
@@ -135,45 +145,89 @@ type lobbyClient struct {
 }
 
 type lobbyHub struct {
-	service *lobby.Service
+	room *lobby.Room
 
 	mu      sync.RWMutex
 	clients map[string]*lobbyClient
 }
 
 func newLobbyHub(service *lobby.Service) *lobbyHub {
-	return &lobbyHub{
-		service: service,
+	h := &lobbyHub{
 		clients: make(map[string]*lobbyClient),
 	}
+	h.room = lobby.NewRoom(service, h.broadcastSnapshot)
+
+	return h
 }
 
-func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player, int, error) {
-	player, count, err := h.service.ConnectPlayer(nickname)
+func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player, error) {
+	player, snapshot, err := h.room.Join(nickname)
 	if err != nil {
-		return lobby.Player{}, 0, err
+		return lobby.Player{}, err
 	}
 
 	h.mu.Lock()
 	h.clients[player.ID] = client
 	h.mu.Unlock()
 
-	return player, count, nil
+	// The join already broadcast this snapshot to previously-connected
+	// clients; send it directly to the new client too, since it wasn't
+	// registered yet when the broadcast fired.
+	h.sendSnapshotTo(client, snapshot)
+
+	return player, nil
 }
 
-func (h *lobbyHub) unregister(playerID string) int {
+func (h *lobbyHub) unregister(playerID string) {
 	h.mu.Lock()
 	delete(h.clients, playerID)
 	h.mu.Unlock()
 
-	return h.service.DisconnectPlayer(playerID)
+	h.room.Leave(playerID)
 }
 
-func (h *lobbyHub) broadcastCount(count int) {
-	message, err := json.Marshal(map[string]any{
-		"type":         "lobby_player_count",
-		"player_count": count,
-	})
+type lobbyPlayerDTO struct {
+	ID       string `json:"id"`
+	Nickname string `json:"nickname"`
+}
+
+type lobbyStateMessage struct {
+	Type             string           `json:"type"`
+	State            string           `json:"state"`
+	PlayerCount      int              `json:"player_count"`
+	MinPlayers       int              `json:"min_players"`
+	MaxPlayers       int              `json:"max_players"`
+	Players          []lobbyPlayerDTO `json:"players"`
+	CountdownSeconds *int             `json:"countdown_seconds,omitempty"`
+}
+
+func marshalSnapshot(snapshot lobby.Snapshot) ([]byte, error) {
+	msg := lobbyStateMessage{
+		Type:        "lobby_state",
+		State:       string(snapshot.State),
+		PlayerCount: snapshot.PlayerCount,
+		MinPlayers:  snapshot.MinPlayers,
+		MaxPlayers:  snapshot.MaxPlayers,
+		Players:     make([]lobbyPlayerDTO, 0, len(snapshot.Players)),
+	}
+
+	for _, p := range snapshot.Players {
+		msg.Players = append(msg.Players, lobbyPlayerDTO{ID: p.ID, Nickname: p.Nickname})
+	}
+
+	if snapshot.State == lobby.StateCountdown {
+		remaining := int(time.Until(snapshot.CountdownEndsAt).Round(time.Second).Seconds())
+		if remaining < 0 {
+			remaining = 0
+		}
+		msg.CountdownSeconds = &remaining
+	}
+
+	return json.Marshal(msg)
+}
+
+func (h *lobbyHub) broadcastSnapshot(snapshot lobby.Snapshot) {
+	payload, err := marshalSnapshot(snapshot)
 	if err != nil {
 		log.Printf("lobby broadcast marshal failed: %v", err)
 		return
@@ -187,9 +241,21 @@ func (h *lobbyHub) broadcastCount(count int) {
 	h.mu.RUnlock()
 
 	for _, client := range clients {
-		if err := writeClientMessage(client, websocket.TextMessage, message); err != nil {
+		if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
 			log.Printf("lobby broadcast failed: %v", err)
 		}
+	}
+}
+
+func (h *lobbyHub) sendSnapshotTo(client *lobbyClient, snapshot lobby.Snapshot) {
+	payload, err := marshalSnapshot(snapshot)
+	if err != nil {
+		log.Printf("lobby snapshot marshal failed: %v", err)
+		return
+	}
+
+	if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
+		log.Printf("lobby snapshot send failed: %v", err)
 	}
 }
 

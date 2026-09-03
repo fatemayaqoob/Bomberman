@@ -5,19 +5,30 @@ import (
 	"sync"
 )
 
-var ErrPlayerAlreadyExists = errors.New("player already exists")
+// MinPlayers and MaxPlayers bound the size of a Bomberman match.
+const (
+	MinPlayers = 2
+	MaxPlayers = 4
+)
+
+var (
+	ErrPlayerAlreadyExists = errors.New("player already exists")
+	ErrLobbyFull           = errors.New("lobby is full")
+)
 
 // PlayerRepository stores current lobby players.
 type PlayerRepository interface {
 	Add(player Player) error
 	Remove(playerID string)
 	Count() int
+	List() []Player
 }
 
 // InMemoryPlayerRepository stores players in memory for stage-one lobby needs.
 type InMemoryPlayerRepository struct {
 	mu      sync.RWMutex
 	players map[string]Player
+	order   []string
 }
 
 func NewInMemoryPlayerRepository() *InMemoryPlayerRepository {
@@ -34,7 +45,12 @@ func (r *InMemoryPlayerRepository) Add(player Player) error {
 		return ErrPlayerAlreadyExists
 	}
 
+	if len(r.players) >= MaxPlayers {
+		return ErrLobbyFull
+	}
+
 	r.players[player.ID] = player
+	r.order = append(r.order, player.ID)
 	return nil
 }
 
@@ -42,7 +58,17 @@ func (r *InMemoryPlayerRepository) Remove(playerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if _, exists := r.players[playerID]; !exists {
+		return
+	}
+
 	delete(r.players, playerID)
+	for i, id := range r.order {
+		if id == playerID {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
 }
 
 func (r *InMemoryPlayerRepository) Count() int {
@@ -50,4 +76,17 @@ func (r *InMemoryPlayerRepository) Count() int {
 	defer r.mu.RUnlock()
 
 	return len(r.players)
+}
+
+// List returns players in join order, giving a stable view for broadcasts.
+func (r *InMemoryPlayerRepository) List() []Player {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	players := make([]Player, 0, len(r.order))
+	for _, id := range r.order {
+		players = append(players, r.players[id])
+	}
+
+	return players
 }
