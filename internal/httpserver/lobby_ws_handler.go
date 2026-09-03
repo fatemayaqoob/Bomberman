@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"bomberman-dom/internal/chat"
+	"bomberman-dom/internal/game"
 	"bomberman-dom/internal/lobby"
 
 	"github.com/gorilla/websocket"
@@ -68,7 +70,7 @@ func (h *lobbyWSHandler) handleConnection(conn *websocket.Conn) {
 
 	defer h.hub.unregister(player.ID)
 
-	h.readUntilDisconnect(client.conn)
+	h.readUntilDisconnect(client)
 }
 
 // lobbyJoinErrorMessage maps internal lobby errors to client-safe messages.
@@ -85,9 +87,10 @@ func lobbyJoinErrorMessage(err error) string {
 	}
 }
 
-func (h *lobbyWSHandler) readUntilDisconnect(conn *websocket.Conn) {
+func (h *lobbyWSHandler) readUntilDisconnect(client *lobbyClient) {
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		msgType, payload, err := client.conn.ReadMessage()
+		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Printf("lobby websocket closed by client: %v", err)
 			} else if websocket.IsUnexpectedCloseError(err) {
@@ -96,6 +99,83 @@ func (h *lobbyWSHandler) readUntilDisconnect(conn *websocket.Conn) {
 				log.Printf("lobby websocket read stopped: %v", err)
 			}
 			return
+		}
+
+		if msgType != websocket.TextMessage {
+			continue
+		}
+
+		h.hub.handleIncoming(client, payload)
+	}
+}
+
+// incomingEnvelope is the generic shape used to dispatch client -> server
+// messages by "type" once past the initial nickname handshake.
+type incomingEnvelope struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+// chatOutgoingMessage is the server -> clients broadcast shape for chat.
+//
+// Protocol:
+//
+//	Client -> Server: {"type": "chat_message", "message": "Hello"}
+//	Server -> Clients: {"type": "chat_message", "nickname": "Ahmed", "message": "Hello"}
+type chatOutgoingMessage struct {
+	Type     string `json:"type"`
+	Nickname string `json:"nickname"`
+	Message  string `json:"message"`
+}
+
+func (h *lobbyHub) handleIncoming(client *lobbyClient, payload []byte) {
+	var envelope incomingEnvelope
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		log.Printf("lobby ws: invalid message payload: %v", err)
+		return
+	}
+
+	switch envelope.Type {
+	case "chat_message":
+		h.handleChatMessage(client, envelope.Message)
+	case "player_move":
+		h.handlePlayerMove(client, payload)
+	default:
+		log.Printf("lobby ws: unknown message type %q", envelope.Type)
+	}
+}
+
+func (h *lobbyHub) handleChatMessage(client *lobbyClient, text string) {
+	msg, err := chat.NewMessage(client.nickname, text)
+	if err != nil {
+		writeClientError(client.conn, "message cannot be empty")
+		return
+	}
+
+	h.broadcastChat(msg)
+}
+
+func (h *lobbyHub) broadcastChat(msg chat.Message) {
+	payload, err := json.Marshal(chatOutgoingMessage{
+		Type:     "chat_message",
+		Nickname: msg.Nickname,
+		Message:  msg.Text,
+	})
+	if err != nil {
+		log.Printf("chat broadcast marshal failed: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	clients := make([]*lobbyClient, 0, len(h.clients))
+	for _, c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	for _, c := range clients {
+		if err := writeClientMessage(c, websocket.TextMessage, payload); err != nil {
+			log.Printf("chat broadcast failed: %v", err)
 		}
 	}
 }
@@ -140,12 +220,15 @@ func readNickname(conn *websocket.Conn) (string, error) {
 }
 
 type lobbyClient struct {
-	conn    *websocket.Conn
-	writeMu sync.Mutex
+	conn     *websocket.Conn
+	writeMu  sync.Mutex
+	nickname string
+	playerID string
 }
 
 type lobbyHub struct {
 	room *lobby.Room
+	game *game.State
 
 	mu      sync.RWMutex
 	clients map[string]*lobbyClient
@@ -154,6 +237,7 @@ type lobbyHub struct {
 func newLobbyHub(service *lobby.Service) *lobbyHub {
 	h := &lobbyHub{
 		clients: make(map[string]*lobbyClient),
+		game:    game.NewState(),
 	}
 	h.room = lobby.NewRoom(service, h.broadcastSnapshot)
 
@@ -166,6 +250,9 @@ func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player,
 		return lobby.Player{}, err
 	}
 
+	client.nickname = player.Nickname
+	client.playerID = player.ID
+
 	h.mu.Lock()
 	h.clients[player.ID] = client
 	h.mu.Unlock()
@@ -174,6 +261,11 @@ func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player,
 	// clients; send it directly to the new client too, since it wasn't
 	// registered yet when the broadcast fired.
 	h.sendSnapshotTo(client, snapshot)
+
+	// Register the player in the authoritative sync state and let every
+	// connected client (including this new one) know about it.
+	h.game.Join(player.ID, player.Nickname)
+	h.broadcastGameState()
 
 	return player, nil
 }
@@ -184,6 +276,9 @@ func (h *lobbyHub) unregister(playerID string) {
 	h.mu.Unlock()
 
 	h.room.Leave(playerID)
+
+	h.game.Leave(playerID)
+	h.broadcastGameState()
 }
 
 type lobbyPlayerDTO struct {
