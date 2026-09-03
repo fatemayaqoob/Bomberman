@@ -6,6 +6,7 @@ import { NicknamePage } from "./pages/nickname.js";
 import { LobbyPage } from "./pages/lobby.js";
 import { GamePage } from "./pages/game.js";
 import { bindUIStore, createInitialUIState } from "./ui-state.js";
+import { ScreenDecorations } from "./components/screen-decorations.js";
 
 export const store = createStore(createInitialUIState());
 bindUIStore(store);
@@ -27,6 +28,7 @@ function App({ route, state, store: appStore, router: appRouter }) {
     return element(
         "main",
         { className: "bomberman-ui" },
+        element(ScreenDecorations),
         element(Page, {
             state,
             store: appStore,
