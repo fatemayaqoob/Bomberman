@@ -257,6 +257,7 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
                 player.lives -= 1;
                 player.alive = false;
                 player.animation = "standing";
+                player.respawnPosition = { row: player.row, col: player.col };
                 player.respawnTimer = player.lives > 0 ? GAME_CONSTANTS.respawnSeconds : 0;
                 player.invulnerableFor = GAME_CONSTANTS.respawnSeconds;
             }
@@ -275,15 +276,13 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
     }
 
     function respawn(player) {
-        const spawn = player.spawn;
-        player.row = spawn.row;
-        player.col = spawn.col;
+        const respawnPosition = player.respawnPosition ?? player.spawn;
+        player.row = respawnPosition.row;
+        player.col = respawnPosition.col;
         player.alive = true;
         player.respawnTimer = 0;
-        // If another player occupies the corner, the protected three-tile spawn
-        // corridor still guarantees a safe first move.
         if (!isWalkable(player.row, player.col, player, true)) {
-            const fallback = adjacentGround(spawn, player);
+            const fallback = adjacentGround(respawnPosition, player);
             if (fallback) {
                 player.row = fallback.row;
                 player.col = fallback.col;
