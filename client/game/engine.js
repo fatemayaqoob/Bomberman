@@ -45,6 +45,32 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
         return state;
     }
 
+    // Multiplayer snapshots are produced by the existing game engine on the
+    // acting client and relayed by the match server. Replacing this state lets
+    // every client continue using the same engine/rendering path.
+    function replaceState(nextState) {
+        if (!nextState || !Array.isArray(nextState.grid) || !Array.isArray(nextState.players)) {
+            return false;
+        }
+        state = {
+            ...state,
+            ...nextState,
+            grid: cloneGrid(nextState.grid),
+            players: nextState.players.map((player) => ({ ...player })),
+            bombs: (nextState.bombs ?? []).map((bomb) => ({ ...bomb })),
+            explosions: (nextState.explosions ?? []).map((explosion) => ({ ...explosion })),
+            powerUps: (nextState.powerUps ?? []).map((powerUp) => ({ ...powerUp }))
+        };
+        return true;
+    }
+
+    function removePlayer(playerID) {
+        const players = state.players.filter((player) => player.id !== playerID);
+        if (players.length === state.players.length) return false;
+        state = { ...state, players, revision: state.revision + 1 };
+        return true;
+    }
+
     function handleInput(playerID, action) {
         const player = findPlayer(playerID);
         if (state.gameOver || !player?.alive) {
@@ -334,7 +360,7 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
         state = { ...state, revision: state.revision + 1 };
     }
 
-    return { getState, handleInput, update, placeBomb, calculateExplosionTiles };
+    return { getState, replaceState, removePlayer, handleInput, update, placeBomb, calculateExplosionTiles };
 }
 
 function createPlayer(player, spawnIndex, spawn = SPAWNS[spawnIndex]) {

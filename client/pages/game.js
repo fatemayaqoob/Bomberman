@@ -5,6 +5,7 @@ import { HUD } from "../components/hud.js";
 import { PowerUpLayer } from "../components/powerups.js";
 import { HatLayer } from "../components/hat-layer.js";
 import { Chat } from "../components/chat.js";
+import { requestPlayAgain } from "../network.js";
 
 export function GamePage({ state }) {
     const gameOver = state.game.gameOver;
@@ -12,13 +13,13 @@ export function GamePage({ state }) {
     return element(
         "section",
         { className: "game-screen" },
-        element(HUD, { stats: state.game.hud }),
+        element(HUD, { stats: state.game.hud, playerCount: state.game.players.length }),
         element(
             "div",
             { className: "arena-stage" },
             element(Map, { grid: state.game.grid }),
             element(PowerUpLayer, { powerUps: state.game.powerUps }),
-            element(HatLayer, { players: state.game.players, lobbyPlayers: state.lobby.players }),
+            element(HatLayer, { players: state.game.players, lobbyPlayers: state.game.matchPlayers }),
             element(
                 "div",
                 { className: "entity-layer", "aria-label": "Player preview" },
@@ -29,7 +30,7 @@ export function GamePage({ state }) {
                 { className: "game-over-overlay" },
                 element("div", { className: "game-over-panel" },
                     element("h2", { className: "game-over-title" }, gameOver.message),
-                    element("p", { className: "game-over-hint" }, "Press R to restart")
+                    element("button", { type: "button", onClick: requestPlayAgain }, "PLAY AGAIN")
                 )
             ) : null
         ),

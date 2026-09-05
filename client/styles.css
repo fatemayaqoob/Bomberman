@@ -635,10 +635,69 @@ button:disabled {
 
 /* ==================== COSMETICS ==================== */
 
-.hat-selector { display: grid; gap: 10px; margin: 4px 0 2px; padding: 12px; background: #202c3d; border: 3px solid #4a5e7d; }
-.hat-selector legend { padding: 0 6px; color: #f4ac20; font-size: clamp(.5rem, 1.5vw, .65rem); }.hat-options { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
-.hat-option { display: grid; min-width: 0; min-height: 68px; place-items: center; gap: 4px; padding: 6px 3px; color: #d7e3f1; background: #1a2636; border: 3px solid #0e141f; border-radius: 4px; box-shadow: inset 1px 1px #4a5e7d, 2px 2px #080b11; font-size: clamp(.36rem, 1.1vw, .49rem); line-height: 1.25; }.hat-option img { width: 34px; height: 28px; object-fit: contain; image-rendering: pixelated; }.hat-option__none { display: grid; width: 26px; height: 26px; place-items: center; color: #7e8ca1; border: 2px solid #7e8ca1; font-size: .65rem; }.hat-option--selected { color: #fff; background: #294a48; border-color: #f4ac20; box-shadow: inset 2px 2px #59786d, 2px 2px #080b11; }.hat-option--taken { color: #778397; background: #151c28; border-color: #334154; box-shadow: none; opacity: .7; }.hat-option--taken::after { content: "LOCK"; color: #f4ac20; font-size: .34rem; }
-.hat-layer { position: absolute; inset: 0; z-index: 4; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(13, 1fr); pointer-events: none; }.player-hat { position: relative; z-index: 1; width: var(--hat-width); grid-column: var(--col); grid-row: var(--row); align-self: start; justify-self: center; margin-top: var(--hat-top); margin-left: calc(var(--hat-left) - 50%); image-rendering: pixelated; transform: translateX(-50%); }
+.hat-selector {  
+  display: grid; 
+  gap: 10px; 
+  margin: 4px 0 2px; 
+  padding: 12px; 
+  background: #202c3d; 
+  border: 3px solid #4a5e7d;
+}
+
+.hat-selector legend { 
+  padding: 0 6px;
+  color: #f4ac20; 
+  font-size: clamp(.5rem, 1.5vw, .65rem);
+}
+
+.hat-options { 
+  display: grid; 
+  grid-template-columns: repeat(5, minmax(0, 1fr)); 
+  gap: 7px; 
+}
+
+.hat-option { 
+  display: grid; 
+  min-width: 0; 
+  min-height: 68px; 
+  place-items: center; 
+  gap: 4px; 
+  padding: 6px 3px; 
+  color: #d7e3f1; 
+  background: #1a2636; 
+  border: 3px solid #0e141f; 
+  border-radius: 4px; 
+  box-shadow: inset 1px 1px #4a5e7d, 2px 2px #080b11; 
+  font-size: clamp(.36rem, 1.1vw, .49rem); 
+  line-height: 1.25; 
+}
+
+.hat-option img { 
+  width: 34px; 
+  height: 28px; 
+  object-fit: contain; 
+  image-rendering: pixelated; 
+}
+
+.hat-option__none { 
+  display: grid; 
+  width: 26px; 
+  height: 26px; 
+  place-items: center; 
+  color: #7e8ca1; 
+  border: 2px solid #7e8ca1; 
+  font-size: .65rem; 
+}
+
+.hat-option--selected { 
+  color: #fff; 
+  background: #294a48; 
+  border-color: #f4ac20; 
+  box-shadow: inset 2px 2px #59786d, 2px 2px #080b11;
+}
+
+.hat-option--taken { color: #778397; background: #151c28; border-color: #334154; box-shadow: none; opacity: .7; }.hat-option--taken::after { content: "LOCK"; color: #f4ac20; font-size: .34rem; }
+.hat-layer { position: absolute; inset: 0; z-index: 4; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(13, 1fr); pointer-events: none; }.player-hat { position: relative; z-index: 1; width: var(--hat-width); grid-column: var(--col); grid-row: var(--row); align-self: start; justify-self: center; margin-top: var(--hat-top); margin-left: calc(var(--hat-left) - 50% - 6px); image-rendering: pixelated; transform: translateX(-50%); }
 
 /* ==================== FIXED BACKDROP DECORATIONS ==================== */
 

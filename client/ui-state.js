@@ -1,6 +1,7 @@
 import { startGameRuntime } from "./game/runtime.js";
 import { HAT_IDS } from "./game/cosmetics.js";
-import { sendPlayerMove } from "./network.js";
+import { createSeededRandom, getArenaGridForSeed } from "./game/map-renderer.js";
+import { sendPlayerMove, sendSharedGameState } from "./network.js";
 
 const SESSION_KEY = "bomberman-session";
 
@@ -35,6 +36,8 @@ export function createInitialUIState() {
         connection: { status: "idle", error: null },
         multiplayer: { players: [] },
         game: {
+            matchPlayers: [],
+            matchSeed: null,
             grid: [],
             players: [],
             powerUps: [],
@@ -88,13 +91,10 @@ export function submitNickname(nickname) {
 // Applies the server lobby snapshot directly to the real UI.
 export function applyLobbyState(snapshot) {
     const state = getUIState();
-    const existingHats = new Map(state.lobby.players.map((player) => [player.id, player.hat]));
     const players = (snapshot.players ?? []).slice(0, MAX_PLAYERS).map((player, slot) => ({
         ...player,
         slot,
-        hat: player.id === snapshot.self_id || player.nickname === state.localPlayer.nickname
-            ? state.localPlayer.hat
-            : existingHats.get(player.id) ?? "none"
+        hat: HAT_IDS.includes(player.hat) ? player.hat : "none"
     }));
 
     const phase = snapshot.state ?? "waiting";
@@ -103,24 +103,47 @@ export function applyLobbyState(snapshot) {
     const localServerPlayer = players.find((player) => player.id === snapshot.self_id)
         ?? players.find((player) => player.nickname === state.localPlayer.nickname);
     const localPlayer = localServerPlayer
-        ? { ...state.localPlayer, id: localServerPlayer.id }
+        ? { ...state.localPlayer, id: localServerPlayer.id, hat: localServerPlayer.hat }
         : state.localPlayer;
 
     uiStore?.setState({
         localPlayer,
-        lobby: { ...state.lobby, players, phase, secondsRemaining }
+        lobby: { ...state.lobby, players, phase, secondsRemaining },
+        game: snapshot.match_seed
+            ? { ...state.game, matchSeed: snapshot.match_seed }
+            : state.game
     });
 
     if (phase === "countdown") startCountdownDisplay(secondsRemaining);
     else stopCountdownDisplay();
 
-    if (phase === "started") {
-        enterGame();
-    } else if (state.screen !== "lobby") {
-        setScreen("lobby");
+    if (state.screen === "game") {
+        stopRunningGame();
     }
+    if (state.screen !== "lobby") setScreen("lobby");
 
     persistSession();
+}
+
+// Active-match snapshots never include next-match waiting players. This keeps
+// the current game roster stable while another lobby fills for the next game.
+export function applyMatchState(snapshot) {
+    const state = getUIState();
+    const matchPlayers = (snapshot.players ?? []).slice(0, MAX_PLAYERS).map((player, slot) => ({
+        ...player,
+        slot,
+        hat: HAT_IDS.includes(player.hat) ? player.hat : "none"
+    }));
+    const local = matchPlayers.find((player) => player.id === snapshot.self_id);
+    uiStore?.setState({
+        localPlayer: local ? { ...state.localPlayer, id: local.id, hat: local.hat } : state.localPlayer,
+        game: {
+            ...state.game,
+            matchPlayers,
+            matchSeed: snapshot.match_seed ?? state.game.matchSeed
+        }
+    });
+    enterGame();
 }
 
 export function setConnectionState(status) {
@@ -164,15 +187,20 @@ export function enterGame() {
 
     stopRunningGame();
     const state = getUIState();
-    const players = state.lobby.players.length
+    const players = state.game.matchPlayers.length
+        ? state.game.matchPlayers
+        : state.lobby.players.length
         ? state.lobby.players
         : [{ id: state.localPlayer.id, nickname: state.localPlayer.nickname || "Player 1", slot: 0 }];
+    const grid = state.game.matchSeed ? getArenaGridForSeed(state.game.matchSeed) : undefined;
     stopGameRuntime = startGameRuntime({
         players,
+        grid,
+        random: state.game.matchSeed ? createSeededRandom(state.game.matchSeed) : undefined,
         localPlayerID: state.localPlayer.id,
         localPlayerNickname: state.localPlayer.nickname,
         onLocalPosition: sendPlayerMove,
-        onRestart: enterGame,
+        onSharedState: sendSharedGameState,
         onStateChange: (engineState, visualItems) => {
             const current = getUIState();
             const local = engineState.players.find((player) => player.id === current.localPlayer.id)
@@ -201,6 +229,53 @@ export function enterGame() {
     });
 
     setScreen("game");
+}
+
+export function applySharedGameState(sharedState) {
+    if (!sharedState || !Array.isArray(sharedState.grid) || !Array.isArray(sharedState.players)) {
+        return;
+    }
+    stopGameRuntime?.applySharedState?.(sharedState);
+    const state = getUIState();
+    const local = sharedState.players.find((player) => player.id === state.localPlayer.id);
+    const visualItems = [
+        ...(sharedState.powerUps ?? []),
+        ...(sharedState.bombs ?? []).map((bomb) => ({ ...bomb, type: "placed-bomb" })),
+        ...(sharedState.explosions ?? []).map((explosion) => ({ ...explosion, type: "placed-explosion" }))
+    ];
+    uiStore?.setState({
+        game: {
+            ...state.game,
+            grid: sharedState.grid,
+            players: sharedState.players.filter((player) => player.alive),
+            powerUps: visualItems,
+            gameOver: sharedState.gameOver ?? null,
+            hud: local ? {
+                ...state.game.hud,
+                lives: local.lives,
+                bombs: local.bombs,
+                flame: local.flame,
+                speed: local.speed
+            } : state.game.hud
+        }
+    });
+}
+
+export function leaveCurrentGame() {
+    stopRunningGame();
+    const state = getUIState();
+    uiStore?.setState({
+        game: {
+            ...state.game,
+            grid: [],
+            players: [],
+            powerUps: [],
+            gameOver: null,
+            matchSeed: null,
+            matchPlayers: []
+        }
+    });
+    setScreen("nickname");
 }
 
 function stopRunningGame() {
@@ -247,6 +322,13 @@ export function applyPlayerState(players = []) {
             ? { ...state.game, players: mergeNetworkPlayers(state.game.players, normalized) }
             : state.game
     });
+
+    const knownIDs = new Set(normalized.map((player) => player.id));
+    for (const player of state.game.players) {
+        if (!knownIDs.has(player.id)) {
+            stopGameRuntime?.removePlayer?.(player.id);
+        }
+    }
 }
 
 export function applyChatMessage(message) {

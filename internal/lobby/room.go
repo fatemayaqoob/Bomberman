@@ -1,6 +1,8 @@
 package lobby
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"sync"
 	"time"
@@ -36,6 +38,7 @@ type Snapshot struct {
 	MinPlayers      int
 	MaxPlayers      int
 	CountdownEndsAt time.Time
+	MatchSeed       uint32
 }
 
 // Room orchestrates the waiting -> countdown -> started state machine on
@@ -55,6 +58,7 @@ type Room struct {
 	waitTimer       *time.Timer
 	countdownTimer  *time.Timer
 	countdownEndsAt time.Time
+	matchSeed       uint32
 }
 
 // NewRoom creates a Room bound to service. onUpdate is called (outside the
@@ -74,7 +78,7 @@ func NewRoom(service *Service, onUpdate func(Snapshot)) *Room {
 
 // Join adds a player to the room, updates timers accordingly, and returns
 // the resulting snapshot. It fails if the room already started or is full.
-func (r *Room) Join(nickname string) (Player, Snapshot, error) {
+func (r *Room) Join(nickname, hat string) (Player, Snapshot, error) {
 	r.mu.Lock()
 
 	if r.state == StateStarted {
@@ -82,7 +86,7 @@ func (r *Room) Join(nickname string) (Player, Snapshot, error) {
 		return Player{}, Snapshot{}, ErrLobbyStarted
 	}
 
-	player, _, err := r.service.ConnectPlayer(nickname)
+	player, _, err := r.service.ConnectPlayer(nickname, hat)
 	if err != nil {
 		r.mu.Unlock()
 		return Player{}, Snapshot{}, err
@@ -105,6 +109,10 @@ func (r *Room) Leave(playerID string) Snapshot {
 
 	if r.state != StateStarted {
 		r.evaluateLocked()
+	} else if r.service.PlayerCount() == 0 {
+		r.cancelTimersLocked()
+		r.state = StateWaiting
+		r.matchSeed = 0
 	}
 
 	snapshot := r.snapshotLocked()
@@ -130,6 +138,7 @@ func (r *Room) snapshotLocked() Snapshot {
 		MinPlayers:      MinPlayers,
 		MaxPlayers:      MaxPlayers,
 		CountdownEndsAt: r.countdownEndsAt,
+		MatchSeed:       r.matchSeed,
 	}
 }
 
@@ -187,10 +196,22 @@ func (r *Room) startCountdownLocked() {
 	gen := r.generation
 
 	r.state = StateCountdown
+	r.matchSeed = newMatchSeed()
 	r.countdownEndsAt = time.Now().Add(CountdownDuration)
 	r.countdownTimer = time.AfterFunc(CountdownDuration, func() {
 		r.onCountdownTimeout(gen)
 	})
+}
+
+func newMatchSeed() uint32 {
+	var bytes [4]byte
+	if _, err := rand.Read(bytes[:]); err == nil {
+		seed := binary.LittleEndian.Uint32(bytes[:])
+		if seed != 0 {
+			return seed
+		}
+	}
+	return uint32(time.Now().UnixNano())
 }
 
 func (r *Room) onWaitTimeout(gen int) {

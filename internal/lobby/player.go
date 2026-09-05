@@ -4,4 +4,5 @@ package lobby
 type Player struct {
 	ID       string
 	Nickname string
+	Hat      string
 }

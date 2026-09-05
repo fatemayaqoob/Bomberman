@@ -3,8 +3,8 @@ import { attachGameInput } from "./input.js";
 import { startGameLoop } from "./loop.js";
 
 // Connects the game engine to the existing keyboard and RAF helpers.
-export function startGameRuntime({ players, localPlayerID, localPlayerNickname, onLocalPosition, onStateChange, onRestart, onFps }) {
-    const engine = createGameEngine({ players });
+export function startGameRuntime({ players, grid, random, localPlayerID, localPlayerNickname, onLocalPosition, onSharedState, onStateChange, onRestart, onFps }) {
+    const engine = createGameEngine({ players, grid, random });
     const activePlayers = engine.getState().players;
     const controlledPlayerID = activePlayers.find(({ id }) => id === localPlayerID)?.id
         ?? activePlayers.find(({ nickname }) => nickname === localPlayerNickname)?.id
@@ -13,7 +13,7 @@ export function startGameRuntime({ players, localPlayerID, localPlayerNickname, 
     let lastRenderSignature = "";
     let lastSentPosition = "";
 
-    function publish() {
+    function publish(shareState = false) {
         const state = engine.getState();
         const visualItems = [
             ...state.powerUps,
@@ -34,6 +34,10 @@ export function startGameRuntime({ players, localPlayerID, localPlayerNickname, 
                 grid: state.grid.map((row) => row.map((tile) => ({ ...tile }))),
                 players: state.players.map((player) => ({ ...player }))
             }, visualItems);
+        }
+
+        if (shareState) {
+            onSharedState?.(serializeSharedState(state));
         }
 
         const controlledPlayer = state.players.find((player) => player.id === controlledPlayerID);
@@ -57,20 +61,40 @@ export function startGameRuntime({ players, localPlayerID, localPlayerNickname, 
                 return;
             }
             engine.handleInput(controlledPlayerID, action);
-            publish();
+            publish(true);
         }
     });
     const stopLoop = startGameLoop({
         update: (delta) => {
             if (engine.update(delta)) {
-                publish();
+                publish(true);
             }
         },
         onFps
     });
 
-    return () => {
+    const stop = () => {
         detachInput();
         stopLoop();
+    };
+
+    stop.applySharedState = (sharedState) => {
+        if (engine.replaceState(sharedState)) publish();
+    };
+    stop.removePlayer = (playerID) => {
+        if (engine.removePlayer(playerID)) publish();
+    };
+    return stop;
+}
+
+function serializeSharedState(state) {
+    return {
+        grid: state.grid.map((row) => row.map((tile) => ({ ...tile }))),
+        players: state.players.map((player) => ({ ...player })),
+        bombs: state.bombs.map((bomb) => ({ ...bomb })),
+        explosions: state.explosions.map((explosion) => ({ ...explosion })),
+        powerUps: state.powerUps.map((powerUp) => ({ ...powerUp })),
+        gameOver: state.gameOver,
+        revision: state.revision
     };
 }

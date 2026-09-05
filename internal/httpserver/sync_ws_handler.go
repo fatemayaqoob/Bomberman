@@ -85,6 +85,13 @@ func marshalGameSnapshot(players []game.Player) ([]byte, error) {
 // authoritative game state and, if accepted, broadcasts the new state to
 // every connected client.
 func (h *lobbyHub) handlePlayerMove(client *lobbyClient, payload []byte) {
+	h.mu.RLock()
+	isActive := h.activeMatch != nil && h.activeMatch.players[client.playerID] == client
+	h.mu.RUnlock()
+	if !isActive {
+		return
+	}
+
 	var move playerMoveEnvelope
 	if err := json.Unmarshal(payload, &move); err != nil {
 		log.Printf("sync ws: invalid player_move payload: %v", err)
@@ -111,9 +118,11 @@ func (h *lobbyHub) broadcastGameState() {
 	}
 
 	h.mu.RLock()
-	clients := make([]*lobbyClient, 0, len(h.clients))
-	for _, c := range h.clients {
-		clients = append(clients, c)
+	clients := make([]*lobbyClient, 0)
+	if h.activeMatch != nil {
+		for _, c := range h.activeMatch.players {
+			clients = append(clients, c)
+		}
 	}
 	h.mu.RUnlock()
 

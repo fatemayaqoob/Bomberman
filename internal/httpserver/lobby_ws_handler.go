@@ -26,12 +26,8 @@ type lobbyWSHandler struct {
 }
 
 func newLobbyWSHandler() *lobbyWSHandler {
-	repo := lobby.NewInMemoryPlayerRepository()
-	idGenerator := lobby.NewCryptoIDGenerator()
-	service := lobby.NewService(repo, idGenerator)
-
 	return &lobbyWSHandler{
-		hub: newLobbyHub(service),
+		hub: newLobbyHub(),
 	}
 }
 
@@ -54,21 +50,21 @@ func (h *lobbyWSHandler) handleConnection(conn *websocket.Conn) {
 	client := &lobbyClient{conn: conn}
 	defer closeConn(client.conn)
 
-	nickname, err := readNickname(client.conn)
+	nickname, hat, err := readNickname(client.conn)
 	if err != nil {
 		log.Printf("lobby nickname read failed: %v", err)
 		writeClientError(client.conn, "nickname required")
 		return
 	}
 
-	player, err := h.hub.register(client, nickname)
+	_, err = h.hub.register(client, nickname, hat)
 	if err != nil {
 		log.Printf("lobby register failed: %v", err)
 		writeClientError(client.conn, lobbyJoinErrorMessage(err))
 		return
 	}
 
-	defer h.hub.unregister(player.ID)
+	defer h.hub.unregister(client)
 
 	h.readUntilDisconnect(client)
 }
@@ -114,6 +110,7 @@ func (h *lobbyWSHandler) readUntilDisconnect(client *lobbyClient) {
 type incomingEnvelope struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+	State   json.RawMessage `json:"state"`
 }
 
 // chatOutgoingMessage is the server -> clients broadcast shape for chat.
@@ -140,6 +137,10 @@ func (h *lobbyHub) handleIncoming(client *lobbyClient, payload []byte) {
 		h.handleChatMessage(client, envelope.Message)
 	case "player_move":
 		h.handlePlayerMove(client, payload)
+	case "play_again":
+		h.playAgain(client)
+	case "game_state":
+		h.relayGameState(client, envelope.State)
 	default:
 		log.Printf("lobby ws: unknown message type %q", envelope.Type)
 	}
@@ -153,6 +154,76 @@ func (h *lobbyHub) handleChatMessage(client *lobbyClient, text string) {
 	}
 
 	h.broadcastChat(msg)
+}
+
+// playAgain moves only the requesting completed-match player to the next
+// waiting room. The connection stays open, but the old match membership and
+// position are removed before the player can be queued again.
+func (h *lobbyHub) playAgain(client *lobbyClient) {
+	h.mu.Lock()
+	if client.phase != clientActive || h.activeMatch == nil || h.activeMatch.players[client.playerID] != client {
+		h.mu.Unlock()
+		return
+	}
+	oldID := client.playerID
+	delete(h.activeMatch.players, oldID)
+	h.game.Leave(oldID)
+	delete(h.clients, oldID)
+	if len(h.activeMatch.players) == 0 {
+		h.activeMatch = nil
+	}
+	h.mu.Unlock()
+
+	player, snapshot, err := h.waitingRoom.Join(client.nickname, h.availableHat(client.hat, client))
+	if err != nil {
+		writeClientError(client.conn, "could not join the next-match lobby")
+		return
+	}
+
+	h.mu.Lock()
+	client.playerID = player.ID
+	client.hat = player.Hat
+	client.phase = clientWaiting
+	h.clients[player.ID] = client
+	h.mu.Unlock()
+	h.ensurePromoted(client, snapshot)
+
+	h.sendSnapshotTo(client, snapshot)
+	h.broadcastGameState()
+	h.broadcastMatchState()
+}
+
+// The existing browser engine remains the rules implementation. The server
+// retains and broadcasts the active match's latest valid gameplay snapshot so
+// bombs, blocks, power-ups and player damage are shared by every participant.
+func (h *lobbyHub) relayGameState(client *lobbyClient, state json.RawMessage) {
+	if len(state) == 0 || len(state) > 512*1024 || !json.Valid(state) {
+		return
+	}
+	h.mu.Lock()
+	if client.phase != clientActive || h.activeMatch == nil || h.activeMatch.players[client.playerID] != client {
+		h.mu.Unlock()
+		return
+	}
+	h.activeMatch.gameState = append(h.activeMatch.gameState[:0], state...)
+	clients := make([]*lobbyClient, 0, len(h.activeMatch.players))
+	for _, member := range h.activeMatch.players {
+		clients = append(clients, member)
+	}
+	h.mu.Unlock()
+
+	payload, err := json.Marshal(struct {
+		Type  string          `json:"type"`
+		State json.RawMessage `json:"state"`
+	}{Type: "game_state", State: state})
+	if err != nil {
+		return
+	}
+	for _, member := range clients {
+		if err := writeClientMessage(member, websocket.TextMessage, payload); err != nil {
+			log.Printf("game state broadcast failed: %v", err)
+		}
+	}
 }
 
 func (h *lobbyHub) broadcastChat(msg chat.Message) {
@@ -182,41 +253,42 @@ func (h *lobbyHub) broadcastChat(msg chat.Message) {
 
 type nicknameEnvelope struct {
 	Nickname string `json:"nickname"`
+	Hat      string `json:"hat"`
 }
 
-func readNickname(conn *websocket.Conn) (string, error) {
+func readNickname(conn *websocket.Conn) (string, string, error) {
 	if err := conn.SetReadDeadline(time.Now().Add(nicknameReadTimeout)); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	msgType, payload, err := conn.ReadMessage()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if msgType != websocket.TextMessage {
-		return "", errors.New("nickname must be a text message")
+		return "", "", errors.New("nickname must be a text message")
 	}
 
 	raw := strings.TrimSpace(string(payload))
 	if raw == "" {
-		return "", lobby.ErrEmptyNickname
+		return "", "", lobby.ErrEmptyNickname
 	}
 
 	var envelope nicknameEnvelope
 	if err := json.Unmarshal(payload, &envelope); err == nil {
 		if strings.TrimSpace(envelope.Nickname) == "" {
-			return "", lobby.ErrEmptyNickname
+			return "", "", lobby.ErrEmptyNickname
 		}
 
-		return envelope.Nickname, nil
+		return envelope.Nickname, envelope.Hat, nil
 	}
 
-	return raw, nil
+	return raw, "none", nil
 }
 
 type lobbyClient struct {
@@ -224,66 +296,115 @@ type lobbyClient struct {
 	writeMu  sync.Mutex
 	nickname string
 	playerID string
+	hat      string
+	phase    clientPhase
+}
+
+type clientPhase string
+
+const (
+	clientWaiting clientPhase = "waiting"
+	clientActive  clientPhase = "active"
+)
+
+type activeMatch struct {
+	id        uint64
+	seed      uint32
+	players   map[string]*lobbyClient
+	gameState json.RawMessage
 }
 
 type lobbyHub struct {
-	room *lobby.Room
-	game *game.State
+	waitingRoom *lobby.Room
+	activeMatch *activeMatch
+	game        *game.State
+	nextMatchID uint64
 
 	mu      sync.RWMutex
 	clients map[string]*lobbyClient
 }
 
-func newLobbyHub(service *lobby.Service) *lobbyHub {
+func newLobbyHub() *lobbyHub {
 	h := &lobbyHub{
 		clients: make(map[string]*lobbyClient),
 		game:    game.NewState(),
 	}
-	h.room = lobby.NewRoom(service, h.broadcastSnapshot)
+	h.waitingRoom = h.newWaitingRoom()
 
 	return h
 }
 
-func (h *lobbyHub) register(client *lobbyClient, nickname string) (lobby.Player, error) {
-	player, snapshot, err := h.room.Join(nickname)
+func (h *lobbyHub) newWaitingRoom() *lobby.Room {
+	service := lobby.NewService(lobby.NewInMemoryPlayerRepository(), lobby.NewCryptoIDGenerator())
+	return lobby.NewRoom(service, h.handleWaitingSnapshot)
+}
+
+func (h *lobbyHub) register(client *lobbyClient, nickname, hat string) (lobby.Player, error) {
+	player, snapshot, err := h.waitingRoom.Join(nickname, h.availableHat(hat, nil))
 	if err != nil {
 		return lobby.Player{}, err
 	}
 
 	client.nickname = player.Nickname
 	client.playerID = player.ID
+	client.hat = player.Hat
+	client.phase = clientWaiting
 
 	h.mu.Lock()
 	h.clients[player.ID] = client
 	h.mu.Unlock()
+	h.ensurePromoted(client, snapshot)
 
 	// The join already broadcast this snapshot to previously-connected
 	// clients; send it directly to the new client too, since it wasn't
 	// registered yet when the broadcast fired.
 	h.sendSnapshotTo(client, snapshot)
 
-	// Register the player in the authoritative sync state and let every
-	// connected client (including this new one) know about it.
-	h.game.Join(player.ID, player.Nickname)
-	h.broadcastGameState()
-
 	return player, nil
 }
 
-func (h *lobbyHub) unregister(playerID string) {
+// Room callbacks run before Join returns. If a player is the final promotion
+// slot, attach that now-identified connection to the just-created match.
+func (h *lobbyHub) ensurePromoted(client *lobbyClient, snapshot lobby.Snapshot) {
+	if snapshot.State != lobby.StateStarted {
+		return
+	}
 	h.mu.Lock()
+	if h.activeMatch != nil && h.activeMatch.seed == snapshot.MatchSeed && client.phase == clientWaiting {
+		client.phase = clientActive
+		h.activeMatch.players[client.playerID] = client
+		h.game.Join(client.playerID, client.nickname)
+	}
+	h.mu.Unlock()
+	h.sendMatchStateTo(client)
+}
+
+func (h *lobbyHub) unregister(client *lobbyClient) {
+	h.mu.Lock()
+	phase := client.phase
+	playerID := client.playerID
+	if phase == clientActive && h.activeMatch != nil {
+		delete(h.activeMatch.players, playerID)
+		h.game.Leave(playerID)
+		if len(h.activeMatch.players) == 0 {
+			h.activeMatch = nil
+		}
+	}
 	delete(h.clients, playerID)
 	h.mu.Unlock()
 
-	h.room.Leave(playerID)
-
-	h.game.Leave(playerID)
-	h.broadcastGameState()
+	if phase == clientWaiting {
+		h.waitingRoom.Leave(playerID)
+	} else {
+		h.broadcastGameState()
+		h.broadcastMatchState()
+	}
 }
 
 type lobbyPlayerDTO struct {
 	ID       string `json:"id"`
 	Nickname string `json:"nickname"`
+	Hat      string `json:"hat"`
 }
 
 type lobbyStateMessage struct {
@@ -295,6 +416,7 @@ type lobbyStateMessage struct {
 	Players          []lobbyPlayerDTO `json:"players"`
 	CountdownSeconds *int             `json:"countdown_seconds,omitempty"`
 	SelfID           string           `json:"self_id,omitempty"`
+	MatchSeed        uint32           `json:"match_seed,omitempty"`
 }
 
 func marshalSnapshot(snapshot lobby.Snapshot) ([]byte, error) {
@@ -310,10 +432,11 @@ func marshalSnapshotFor(snapshot lobby.Snapshot, selfID string) ([]byte, error) 
 		MaxPlayers:  snapshot.MaxPlayers,
 		Players:     make([]lobbyPlayerDTO, 0, len(snapshot.Players)),
 		SelfID:      selfID,
+		MatchSeed:   snapshot.MatchSeed,
 	}
 
 	for _, p := range snapshot.Players {
-		msg.Players = append(msg.Players, lobbyPlayerDTO{ID: p.ID, Nickname: p.Nickname})
+		msg.Players = append(msg.Players, lobbyPlayerDTO{ID: p.ID, Nickname: p.Nickname, Hat: p.Hat})
 	}
 
 	if snapshot.State == lobby.StateCountdown {
@@ -327,24 +450,64 @@ func marshalSnapshotFor(snapshot lobby.Snapshot, selfID string) ([]byte, error) 
 	return json.Marshal(msg)
 }
 
-func (h *lobbyHub) broadcastSnapshot(snapshot lobby.Snapshot) {
+// handleWaitingSnapshot only addresses players queued for the next match.
+// When its countdown finishes, that exact roster is promoted to an isolated
+// active match and a fresh empty waiting room immediately replaces it.
+func (h *lobbyHub) handleWaitingSnapshot(snapshot lobby.Snapshot) {
+	if snapshot.State == lobby.StateStarted {
+		h.promoteWaitingPlayers(snapshot)
+		return
+	}
+
 	h.mu.RLock()
 	clients := make([]*lobbyClient, 0, len(h.clients))
 	for _, client := range h.clients {
-		clients = append(clients, client)
+		if client.phase == clientWaiting {
+			clients = append(clients, client)
+		}
 	}
 	h.mu.RUnlock()
 
 	for _, client := range clients {
-		payload, err := marshalSnapshotFor(snapshot, client.playerID)
-		if err != nil {
-			log.Printf("lobby broadcast marshal failed: %v", err)
+		h.sendSnapshotTo(client, snapshot)
+	}
+}
+
+func (h *lobbyHub) promoteWaitingPlayers(snapshot lobby.Snapshot) {
+	h.mu.Lock()
+	if h.activeMatch != nil {
+		h.mu.Unlock()
+		return
+	}
+
+	h.nextMatchID++
+	match := &activeMatch{
+		id:      h.nextMatchID,
+		seed:    snapshot.MatchSeed,
+		players: make(map[string]*lobbyClient, len(snapshot.Players)),
+	}
+	for _, player := range snapshot.Players {
+		client := h.clients[player.ID]
+		if client == nil || client.phase != clientWaiting {
 			continue
 		}
-		if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
-			log.Printf("lobby broadcast failed: %v", err)
-		}
+		client.phase = clientActive
+		match.players[player.ID] = client
+		h.game.Join(player.ID, player.Nickname)
 	}
+	h.activeMatch = match
+	// New arrivals now enter a new queue and can never join this match.
+	h.waitingRoom = h.newWaitingRoom()
+	clients := make([]*lobbyClient, 0, len(match.players))
+	for _, client := range match.players {
+		clients = append(clients, client)
+	}
+	h.mu.Unlock()
+
+	for _, client := range clients {
+		h.sendMatchStateTo(client)
+	}
+	h.broadcastGameState()
 }
 
 func (h *lobbyHub) sendSnapshotTo(client *lobbyClient, snapshot lobby.Snapshot) {
@@ -357,6 +520,74 @@ func (h *lobbyHub) sendSnapshotTo(client *lobbyClient, snapshot lobby.Snapshot) 
 	if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
 		log.Printf("lobby snapshot send failed: %v", err)
 	}
+}
+
+func (h *lobbyHub) sendMatchStateTo(client *lobbyClient) {
+	h.mu.RLock()
+	match := h.activeMatch
+	if match == nil || match.players[client.playerID] == nil {
+		h.mu.RUnlock()
+		return
+	}
+	players := make([]lobbyPlayerDTO, 0, len(match.players))
+	for _, member := range match.players {
+		players = append(players, lobbyPlayerDTO{ID: member.playerID, Nickname: member.nickname, Hat: member.hat})
+	}
+	message := struct {
+		Type      string           `json:"type"`
+		State     string           `json:"state"`
+		MatchID   uint64           `json:"match_id"`
+		MatchSeed uint32           `json:"match_seed"`
+		Players   []lobbyPlayerDTO `json:"players"`
+		SelfID    string           `json:"self_id"`
+	}{"match_state", "started", match.id, match.seed, players, client.playerID}
+	h.mu.RUnlock()
+
+	payload, err := json.Marshal(message)
+	if err == nil {
+		if err := writeClientMessage(client, websocket.TextMessage, payload); err != nil {
+			log.Printf("match state send failed: %v", err)
+		}
+	}
+}
+
+func (h *lobbyHub) broadcastMatchState() {
+	h.mu.RLock()
+	clients := make([]*lobbyClient, 0)
+	if h.activeMatch != nil {
+		for _, client := range h.activeMatch.players {
+			clients = append(clients, client)
+		}
+	}
+	h.mu.RUnlock()
+	for _, client := range clients {
+		h.sendMatchStateTo(client)
+	}
+}
+
+func (h *lobbyHub) availableHat(requested string, exclude *lobbyClient) string {
+	valid := []string{"none", "hat", "crown", "frost", "santa"}
+	taken := make(map[string]bool)
+	h.mu.RLock()
+	for _, client := range h.clients {
+		if client != exclude && client.hat != "none" {
+			taken[client.hat] = true
+		}
+	}
+	h.mu.RUnlock()
+	if requested == "none" || (!taken[requested] && isKnownHat(requested)) {
+		return requested
+	}
+	for _, hat := range valid {
+		if hat == "none" || !taken[hat] {
+			return hat
+		}
+	}
+	return "none"
+}
+
+func isKnownHat(hat string) bool {
+	return hat == "none" || hat == "hat" || hat == "crown" || hat == "frost" || hat == "santa"
 }
 
 func writeClientError(conn *websocket.Conn, message string) {

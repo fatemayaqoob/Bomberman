@@ -2,7 +2,10 @@ import { element } from "../../framework/element.js";
 
 const ASSETS = {
     "placed-bomb": "/static/assets/bomb/bomb1.png",
-    "placed-explosion": "/static/assets/explosion/explosion1.gif"
+    "placed-explosion": "/static/assets/explosion/explosion1.gif",
+    bomb: "/static/assets/powerups/red-bomb-power-up.png",
+    flame: "/static/assets/powerups/flame-draft.png",
+    speed: "/static/assets/powerups/speed-power-up.png"
 };
 
 const LABELS = {
@@ -35,7 +38,7 @@ function renderPowerUp(powerUp) {
     const content = asset
         ? element("img", {
             src: asset,
-            alt: powerUp.type === "placed-bomb" ? "Placed bomb" : "Explosion",
+            alt: powerUp.type === "placed-bomb" ? "Placed bomb" : powerUp.type === "placed-explosion" ? "Explosion" : `${powerUp.type} power-up`,
             draggable: false
         })
         : element(

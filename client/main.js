@@ -6,6 +6,8 @@ import { NicknamePage } from "./pages/nickname.js";
 import { LobbyPage } from "./pages/lobby.js";
 import { GamePage } from "./pages/game.js";
 import { bindUIStore, createInitialUIState } from "./ui-state.js";
+import { leaveCurrentGame } from "./ui-state.js";
+import { leaveServer } from "./network.js";
 import { ScreenDecorations } from "./components/screen-decorations.js";
 
 export const store = createStore(createInitialUIState());
@@ -23,7 +25,14 @@ function App({ route, state, store: appStore, router: appRouter }) {
         "/lobby": LobbyPage,
         "/game": GamePage
     };
-    const Page = pages[route] ?? NicknamePage;
+    const gameRouteIsValid = state.screen === "game" && state.game.matchSeed;
+    const safeRoute = pages[route] && (route !== "/game" || gameRouteIsValid)
+        ? route
+        : "/nickname";
+    if (route !== safeRoute) {
+        queueMicrotask(() => appRouter.navigate(safeRoute));
+    }
+    const Page = pages[safeRoute];
 
     return element(
         "main",
@@ -46,4 +55,30 @@ createApp({
     component: App,
     store,
     router
+});
+
+let restoringGameRoute = false;
+window.addEventListener("hashchange", () => {
+    const requestedRoute = window.location.hash.replace(/^#/, "") || "/nickname";
+    const state = store.getState();
+    if (restoringGameRoute || state.screen !== "game" || requestedRoute === "/game") {
+        return;
+    }
+
+    if (!window.confirm("Are you sure you want to leave the game?")) {
+        restoringGameRoute = true;
+        window.location.hash = "/game";
+        queueMicrotask(() => { restoringGameRoute = false; });
+        return;
+    }
+
+    leaveServer();
+    leaveCurrentGame();
+});
+
+window.addEventListener("beforeunload", (event) => {
+    if (store.getState().screen !== "game") return;
+    leaveServer();
+    event.preventDefault();
+    event.returnValue = "";
 });

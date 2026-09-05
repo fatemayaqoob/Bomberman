@@ -40,6 +40,24 @@ export function getArenaGrid(random = Math.random) {
     );
 }
 
+// A match seed comes from the server. Every browser expands the same seed
+// through this deterministic generator, so blocks, variants and decorations
+// are identical for the players in one match.
+export function getArenaGridForSeed(seed) {
+    return getArenaGrid(createSeededRandom(seed));
+}
+
+export function createSeededRandom(seed) {
+    let value = (Number(seed) >>> 0) || 1;
+    return () => {
+        value += 0x6D2B79F5;
+        let result = value;
+        result = Math.imul(result ^ (result >>> 15), result | 1);
+        result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+        return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 export function mapToTiles(map = getArenaGrid()) {
     return map.flat();
 }
@@ -86,7 +104,12 @@ function getBlockVariant(type, random) {
         return null;
     }
 
-    return `block${1 + Math.floor(random() * 4)}`;
+    // block1 + block2 = 30%; block3 + block4 = 70%.
+    const roll = random();
+    if (roll < 0.15) return "block1";
+    if (roll < 0.30) return "block2";
+    if (roll < 0.65) return "block3";
+    return "block4";
 }
 
 function getBlockHits(type, variant) {

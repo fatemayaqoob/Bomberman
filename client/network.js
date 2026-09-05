@@ -1,8 +1,11 @@
 import {
     applyChatMessage,
     applyLobbyState,
+    applyMatchState,
+    applySharedGameState,
     applyPlayerState,
     applyServerError,
+    leaveCurrentGame,
     setConnectionState,
     submitNickname
 } from "./ui-state.js";
@@ -24,7 +27,7 @@ export function connectToServer(nickname) {
 
     socket.addEventListener("open", () => {
         setConnectionState("connected");
-        socket.send(JSON.stringify({ nickname }));
+        socket.send(JSON.stringify({ nickname, hat: getSelectedHat() }));
     });
 
     socket.addEventListener("message", (event) => {
@@ -35,12 +38,44 @@ export function connectToServer(nickname) {
         }
     });
 
-    socket.addEventListener("close", () => setConnectionState("disconnected"));
+    socket.addEventListener("close", () => {
+        setConnectionState("disconnected");
+        // The server removes this connection from its authoritative roster.
+        // Stop the local runtime too, so a closed tab/connection never leaves
+        // a stale local match view running.
+        if (window.location.hash === "#/game") {
+            leaveCurrentGame();
+        }
+    });
     socket.addEventListener("error", () => applyServerError("Could not connect to the game server."));
+}
+
+export function leaveServer() {
+    if (socket && socket.readyState < WebSocket.CLOSING) {
+        socket.close(1000, "player left");
+    }
+    socket = null;
+}
+
+function getSelectedHat() {
+    try {
+        const raw = window.sessionStorage.getItem("bomberman-session");
+        return JSON.parse(raw)?.localPlayer?.hat ?? "none";
+    } catch {
+        return "none";
+    }
 }
 
 export function sendPlayerMove({ col, row, direction }) {
     send({ type: "player_move", x: col, y: row, direction: toServerDirection(direction) });
+}
+
+export function sendSharedGameState(state) {
+    return send({ type: "game_state", state });
+}
+
+export function requestPlayAgain() {
+    return send({ type: "play_again" });
 }
 
 export function sendChatMessage(message) {
@@ -60,6 +95,12 @@ function handleMessage(message) {
     switch (message.type) {
         case "lobby_state":
             applyLobbyState(message);
+            break;
+        case "match_state":
+            applyMatchState(message);
+            break;
+        case "game_state":
+            applySharedGameState(message.state);
             break;
         case "player_state":
             applyPlayerState(message.players);
