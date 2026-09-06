@@ -78,6 +78,8 @@ func lobbyJoinErrorMessage(err error) string {
 		return "game already in progress"
 	case errors.Is(err, lobby.ErrEmptyNickname):
 		return "nickname is required"
+	case errors.Is(err, lobby.ErrNicknameTaken):
+		return "nickname already taken"
 	default:
 		return "failed to join lobby"
 	}
