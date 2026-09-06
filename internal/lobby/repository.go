@@ -2,6 +2,7 @@ package lobby
 
 import (
 	"errors"
+	"strings"
 	"sync"
 )
 
@@ -14,6 +15,7 @@ const (
 var (
 	ErrPlayerAlreadyExists = errors.New("player already exists")
 	ErrLobbyFull           = errors.New("lobby is full")
+	ErrNicknameTaken       = errors.New("nickname already taken")
 )
 
 // PlayerRepository stores current lobby players.
@@ -47,6 +49,13 @@ func (r *InMemoryPlayerRepository) Add(player Player) error {
 
 	if len(r.players) >= MaxPlayers {
 		return ErrLobbyFull
+	}
+
+	normalized := strings.ToLower(player.Nickname)
+	for _, existing := range r.players {
+		if strings.ToLower(existing.Nickname) == normalized {
+			return ErrNicknameTaken
+		}
 	}
 
 	r.players[player.ID] = player
