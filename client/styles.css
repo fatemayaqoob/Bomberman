@@ -299,6 +299,22 @@ button:disabled {
   box-shadow: 0 0 0 5px #0a202c, 12px 12px 0 #071921;
 }
 
+.game-notice {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 90;
+  padding: 12px 18px;
+  color: #fffbe6;
+  background: rgba(128, 36, 48, 0.94);
+  border: 4px solid #0e141f;
+  box-shadow: 4px 4px 0 #080b11;
+  font-size: clamp(0.58rem, 1.8vw, 0.78rem);
+  text-align: center;
+  transform: translateX(-50%);
+  animation: fade-in 0.2s ease-out;
+}
+
 .game-over-overlay {
   position: absolute;
   inset: 0;

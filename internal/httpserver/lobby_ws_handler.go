@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -345,7 +346,15 @@ func (h *lobbyHub) newWaitingRoom() *lobby.Room {
 }
 
 func (h *lobbyHub) register(client *lobbyClient, nickname, hat string) (lobby.Player, error) {
-	player, snapshot, err := h.waitingRoom.Join(nickname, h.availableHat(hat, nil))
+	h.mu.RLock()
+	if h.activeMatch != nil {
+		h.mu.RUnlock()
+		return lobby.Player{}, lobby.ErrLobbyStarted
+	}
+	waitingRoom := h.waitingRoom
+	h.mu.RUnlock()
+
+	player, snapshot, err := waitingRoom.Join(nickname, h.availableHat(hat, nil))
 	if err != nil {
 		return lobby.Player{}, err
 	}
@@ -433,6 +442,7 @@ type lobbyStateMessage struct {
 	MaxPlayers       int              `json:"max_players"`
 	Players          []lobbyPlayerDTO `json:"players"`
 	CountdownSeconds *int             `json:"countdown_seconds,omitempty"`
+	CountdownEndsAt  *time.Time       `json:"countdown_ends_at,omitempty"`
 	SelfID           string           `json:"self_id,omitempty"`
 	MatchSeed        uint32           `json:"match_seed,omitempty"`
 }
@@ -458,11 +468,12 @@ func marshalSnapshotFor(snapshot lobby.Snapshot, selfID string) ([]byte, error) 
 	}
 
 	if snapshot.State == lobby.StateCountdown {
-		remaining := int(time.Until(snapshot.CountdownEndsAt).Round(time.Second).Seconds())
+		remaining := int(math.Ceil(time.Until(snapshot.CountdownEndsAt).Seconds()))
 		if remaining < 0 {
 			remaining = 0
 		}
 		msg.CountdownSeconds = &remaining
+		msg.CountdownEndsAt = &snapshot.CountdownEndsAt
 	}
 
 	return json.Marshal(msg)
