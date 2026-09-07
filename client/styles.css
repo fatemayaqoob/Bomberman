@@ -546,19 +546,43 @@ button:disabled {
 }
 
 .arena-player[data-player-slot="0"] img {
-  filter: hue-rotate(0deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
+  filter:
+    sepia(1)
+    saturate(8)
+    hue-rotate(320deg)
+    brightness(0.95)
+    contrast(1.15)
+    drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
 .arena-player[data-player-slot="1"] img {
-  filter: hue-rotate(115deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
+  filter:
+    sepia(1)
+    saturate(8)
+    hue-rotate(175deg)
+    brightness(0.95)
+    contrast(1.15)
+    drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
 .arena-player[data-player-slot="2"] img {
-  filter: hue-rotate(220deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
+  filter:
+    sepia(1)
+    saturate(8)
+    hue-rotate(5deg)
+    brightness(1.05)
+    contrast(1.1)
+    drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
 .arena-player[data-player-slot="3"] img {
-  filter: hue-rotate(290deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
+  filter:
+    sepia(1)
+    saturate(8)
+    hue-rotate(65deg)
+    brightness(0.95)
+    contrast(1.15)
+    drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
 .arena-player__label {
