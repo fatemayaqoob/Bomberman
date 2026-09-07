@@ -110,8 +110,8 @@ func (h *lobbyWSHandler) readUntilDisconnect(client *lobbyClient) {
 // incomingEnvelope is the generic shape used to dispatch client -> server
 // messages by "type" once past the initial nickname handshake.
 type incomingEnvelope struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
+	Type    string          `json:"type"`
+	Message string          `json:"message"`
 	State   json.RawMessage `json:"state"`
 }
 
@@ -310,9 +310,12 @@ const (
 )
 
 type activeMatch struct {
-	id        uint64
-	seed      uint32
-	players   map[string]*lobbyClient
+	id      uint64
+	seed    uint32
+	players map[string]*lobbyClient
+	// order preserves join order so every client receives the same player
+	// list order, instead of Go's randomized map iteration order.
+	order     []string
 	gameState json.RawMessage
 }
 
@@ -495,6 +498,7 @@ func (h *lobbyHub) promoteWaitingPlayers(snapshot lobby.Snapshot) {
 		}
 		client.phase = clientActive
 		match.players[player.ID] = client
+		match.order = append(match.order, player.ID)
 		h.game.Join(player.ID, player.Nickname)
 	}
 	h.activeMatch = match
@@ -531,8 +535,9 @@ func (h *lobbyHub) sendMatchStateTo(client *lobbyClient) {
 		h.mu.RUnlock()
 		return
 	}
-	players := make([]lobbyPlayerDTO, 0, len(match.players))
-	for _, member := range match.players {
+	players := make([]lobbyPlayerDTO, 0, len(match.order))
+	for _, id := range match.order {
+		member := match.players[id]
 		players = append(players, lobbyPlayerDTO{ID: member.playerID, Nickname: member.nickname, Hat: member.hat})
 	}
 	message := struct {

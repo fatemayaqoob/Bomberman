@@ -62,10 +62,12 @@ export function getUIState() {
     return uiStore?.getState();
 }
 
-// Change the visible screen and keep the hash route synchronized.
+// Change the visible screen and keep the hash route synchronized. The hash
+// is updated first so the router already reports the new route by the time
+// this store update triggers a render (hashchange fires asynchronously).
 export function setScreen(screen) {
-    uiStore?.setState({ screen });
     window.location.hash = `/${screen}`;
+    uiStore?.setState({ screen });
 }
 
 export function submitNickname(nickname) {
@@ -211,9 +213,9 @@ export function enterGame() {
                     ...current.game,
                     grid: engineState.grid,
                     players: mergeNetworkPlayers(
-                        engineState.players.filter((player) => player.alive),
+                        engineState.players,
                         current.multiplayer.players
-                    ),
+                    ).filter((player) => player.alive),
                     powerUps: visualItems,
                     gameOver: engineState.gameOver,
                     hud: local ? {
@@ -316,10 +318,15 @@ export function applyPlayerState(players = []) {
         alive: player.alive
     }));
 
+    // The engine's own roster (not the already-filtered render list) is used
+    // as the merge baseline so an eliminated player is recognized as known
+    // and never re-added just because this position-only sync still lists them.
+    const roster = stopGameRuntime?.getPlayers?.() ?? state.game.players;
+
     uiStore?.setState({
         multiplayer: { ...state.multiplayer, players: normalized },
         game: state.screen === "game"
-            ? { ...state.game, players: mergeNetworkPlayers(state.game.players, normalized) }
+            ? { ...state.game, players: mergeNetworkPlayers(roster, normalized).filter((player) => player.alive) }
             : state.game
     });
 
@@ -411,12 +418,27 @@ function updateGamePlayer(id, changes) {
     });
 }
 
+// Unions the locally-known match roster with the latest network snapshot so a
+// player already known to be in the match is never dropped just because a
+// given broadcast is momentarily partial/stale; it only gets updated in place.
+// Eliminated players are never revived: the position-only sync channel has no
+// concept of death, so a locally-dead player must keep overriding it.
 function mergeNetworkPlayers(currentPlayers, networkPlayers) {
     if (!networkPlayers.length) return currentPlayers;
-    return networkPlayers.map((networkPlayer) => {
-        const current = currentPlayers.find((player) => player.id === networkPlayer.id) ?? {};
-        return { ...current, ...networkPlayer };
-    });
+
+    const networkByID = new Map(networkPlayers.map((player) => [player.id, player]));
+    const merged = currentPlayers.map((player) => (
+        player.alive === false ? player : { ...player, ...networkByID.get(player.id) }
+    ));
+
+    const knownIDs = new Set(currentPlayers.map((player) => player.id));
+    for (const networkPlayer of networkPlayers) {
+        if (!knownIDs.has(networkPlayer.id)) {
+            merged.push(networkPlayer);
+        }
+    }
+
+    return merged;
 }
 
 function toClientDirection(direction) {

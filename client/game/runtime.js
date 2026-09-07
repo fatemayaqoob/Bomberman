@@ -84,6 +84,9 @@ export function startGameRuntime({ players, grid, random, localPlayerID, localPl
     stop.removePlayer = (playerID) => {
         if (engine.removePlayer(playerID)) publish();
     };
+    // Exposes the engine's full roster (including eliminated players) so
+    // callers can tell a dead player apart from one who never joined.
+    stop.getPlayers = () => engine.getState().players;
     return stop;
 }
 

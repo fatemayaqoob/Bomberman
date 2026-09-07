@@ -545,19 +545,19 @@ button:disabled {
   animation: walk-bob 0.24s steps(2) infinite;
 }
 
-.arena-player[data-player-id="player-1"] img {
+.arena-player[data-player-slot="0"] img {
   filter: hue-rotate(0deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
-.arena-player[data-player-id="slot-2"] img {
+.arena-player[data-player-slot="1"] img {
   filter: hue-rotate(115deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
-.arena-player[data-player-id="slot-3"] img {
+.arena-player[data-player-slot="2"] img {
   filter: hue-rotate(220deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 
-.arena-player[data-player-id="slot-4"] img {
+.arena-player[data-player-slot="3"] img {
   filter: hue-rotate(290deg) drop-shadow(2px 2px 0 rgba(8, 25, 33, 0.45));
 }
 

@@ -16,6 +16,7 @@ export function Player({ player }) {
         {
             className: `arena-player arena-player--${animation}`,
             "data-player-id": player.id,
+            "data-player-slot": player.slot,
             style: `--col: ${player.col + 1}; --row: ${player.row + 1};`
         },
         element("img", {
