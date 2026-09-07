@@ -32,6 +32,7 @@ export function createInitialUIState() {
             players: [],
             phase: "waiting",
             secondsRemaining: 20,
+            waitEndsAt: null,
             countdownEndsAt: null
         },
         connection: { status: "idle", error: null },
@@ -102,9 +103,11 @@ export function applyLobbyState(snapshot) {
     }));
 
     const phase = snapshot.state ?? "waiting";
+    const waitEndsAt = snapshot.wait_ends_at ?? null;
     const countdownEndsAt = snapshot.countdown_ends_at ?? null;
-    const secondsRemaining = phase === "countdown" && countdownEndsAt
-        ? Math.max(0, Math.ceil((Date.parse(countdownEndsAt) - Date.now()) / 1000))
+    const phaseEndsAt = phase === "countdown" ? countdownEndsAt : waitEndsAt;
+    const secondsRemaining = phaseEndsAt
+        ? Math.max(0, Math.ceil((Date.parse(phaseEndsAt) - Date.now()) / 1000))
         : snapshot.countdown_seconds ?? (phase === "countdown" ? state.lobby.secondsRemaining : 20);
 
     const localServerPlayer = players.find((player) => player.id === snapshot.self_id)
@@ -115,13 +118,13 @@ export function applyLobbyState(snapshot) {
 
     uiStore?.setState({
         localPlayer,
-        lobby: { ...state.lobby, players, phase, secondsRemaining, countdownEndsAt },
+        lobby: { ...state.lobby, players, phase, secondsRemaining, waitEndsAt, countdownEndsAt },
         game: snapshot.match_seed
             ? { ...state.game, matchSeed: snapshot.match_seed }
             : state.game
     });
 
-    if (phase === "countdown" && countdownEndsAt) startCountdownDisplay(countdownEndsAt);
+    if (phaseEndsAt) startCountdownDisplay(phase, phaseEndsAt);
     else stopCountdownDisplay();
 
     if (state.screen === "game") {
@@ -459,12 +462,12 @@ function toClientDirection(direction) {
     return ({ up: "back", down: "front", left: "left", right: "right" })[direction] ?? "front";
 }
 
-function startCountdownDisplay(countdownEndsAt) {
+function startCountdownDisplay(phase, phaseEndsAt) {
     stopCountdownDisplay();
     countdownDisplayTimer = window.setInterval(() => {
         const state = getUIState();
-        const secondsRemaining = Math.max(0, Math.ceil((Date.parse(countdownEndsAt) - Date.now()) / 1000));
-        if (state.lobby.phase !== "countdown" || secondsRemaining <= 0) {
+        const secondsRemaining = Math.max(0, Math.ceil((Date.parse(phaseEndsAt) - Date.now()) / 1000));
+        if (state.lobby.phase !== phase || secondsRemaining <= 0) {
             stopCountdownDisplay();
             return;
         }

@@ -37,6 +37,7 @@ type Snapshot struct {
 	PlayerCount     int
 	MinPlayers      int
 	MaxPlayers      int
+	WaitEndsAt      time.Time
 	CountdownEndsAt time.Time
 	MatchSeed       uint32
 }
@@ -57,6 +58,7 @@ type Room struct {
 
 	waitTimer       *time.Timer
 	countdownTimer  *time.Timer
+	waitEndsAt      time.Time
 	countdownEndsAt time.Time
 	matchSeed       uint32
 }
@@ -137,6 +139,7 @@ func (r *Room) snapshotLocked() Snapshot {
 		PlayerCount:     r.service.PlayerCount(),
 		MinPlayers:      MinPlayers,
 		MaxPlayers:      MaxPlayers,
+		WaitEndsAt:      r.waitEndsAt,
 		CountdownEndsAt: r.countdownEndsAt,
 		MatchSeed:       r.matchSeed,
 	}
@@ -179,12 +182,14 @@ func (r *Room) cancelTimersLocked() {
 		r.countdownTimer.Stop()
 		r.countdownTimer = nil
 	}
+	r.waitEndsAt = time.Time{}
 	r.countdownEndsAt = time.Time{}
 }
 
 func (r *Room) startWaitTimerLocked() {
 	r.generation++
 	gen := r.generation
+	r.waitEndsAt = time.Now().Add(WaitForPlayersDuration)
 
 	r.waitTimer = time.AfterFunc(WaitForPlayersDuration, func() {
 		r.onWaitTimeout(gen)

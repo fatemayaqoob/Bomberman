@@ -441,6 +441,7 @@ type lobbyStateMessage struct {
 	MinPlayers       int              `json:"min_players"`
 	MaxPlayers       int              `json:"max_players"`
 	Players          []lobbyPlayerDTO `json:"players"`
+	WaitEndsAt       *time.Time       `json:"wait_ends_at,omitempty"`
 	CountdownSeconds *int             `json:"countdown_seconds,omitempty"`
 	CountdownEndsAt  *time.Time       `json:"countdown_ends_at,omitempty"`
 	SelfID           string           `json:"self_id,omitempty"`
@@ -474,6 +475,8 @@ func marshalSnapshotFor(snapshot lobby.Snapshot, selfID string) ([]byte, error) 
 		}
 		msg.CountdownSeconds = &remaining
 		msg.CountdownEndsAt = &snapshot.CountdownEndsAt
+	} else if snapshot.State == lobby.StateWaiting && !snapshot.WaitEndsAt.IsZero() {
+		msg.WaitEndsAt = &snapshot.WaitEndsAt
 	}
 
 	return json.Marshal(msg)

@@ -12,7 +12,9 @@ export function LobbyPage({ state }) {
         statusLabel = "GET READY!";
     }
 
-    const statusText = phase === "countdown"
+    const statusText = phase === "waiting" && players.length >= 2
+        ? `${statusLabel} ${secondsRemaining}s`
+        : phase === "countdown"
         ? `${statusLabel} ${secondsRemaining}s`
         : statusLabel;
 
