@@ -331,7 +331,9 @@ export function applyPlayerState(players = []) {
     });
 
     const knownIDs = new Set(normalized.map((player) => player.id));
-    for (const player of state.game.players) {
+    // Sweep the engine's full roster (not the alive-only render list) so a
+    // disconnected player is removed even if they were already eliminated.
+    for (const player of roster) {
         if (!knownIDs.has(player.id)) {
             stopGameRuntime?.removePlayer?.(player.id);
         }

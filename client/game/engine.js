@@ -67,7 +67,14 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
     function removePlayer(playerID) {
         const players = state.players.filter((player) => player.id !== playerID);
         if (players.length === state.players.length) return false;
+        // Capture the roster size before removal: when a disconnect leaves a
+        // single contender, the match ends through the same winner flow used
+        // for combat elimination.
+        const matchSize = state.players.length;
         state = { ...state, players, revision: state.revision + 1 };
+        if (!state.gameOver) {
+            determineWinner(matchSize);
+        }
         return true;
     }
 
@@ -291,9 +298,9 @@ export function createGameEngine({ players = [], random = Math.random, grid = ge
         determineWinner();
     }
 
-    function determineWinner() {
+    function determineWinner(matchSize = state.players.length) {
         const contenders = state.players.filter((player) => player.lives > 0);
-        if (state.players.length > 1 && contenders.length <= 1) {
+        if (matchSize > 1 && contenders.length <= 1) {
             state.gameOver = {
                 winnerID: contenders[0]?.id ?? null,
                 message: contenders[0] ? `${contenders[0].nickname} wins!` : "No winner"

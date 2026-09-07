@@ -168,7 +168,7 @@ func (h *lobbyHub) playAgain(client *lobbyClient) {
 		return
 	}
 	oldID := client.playerID
-	delete(h.activeMatch.players, oldID)
+	removeFromMatchLocked(h.activeMatch, oldID)
 	h.game.Leave(oldID)
 	delete(h.clients, oldID)
 	if len(h.activeMatch.players) == 0 {
@@ -384,12 +384,25 @@ func (h *lobbyHub) ensurePromoted(client *lobbyClient, snapshot lobby.Snapshot) 
 	h.sendMatchStateTo(client)
 }
 
+// removeFromMatchLocked detaches a player from the live match roster and its
+// join-order list, so later match broadcasts never reference a stale member.
+// Callers must hold h.mu.
+func removeFromMatchLocked(match *activeMatch, playerID string) {
+	delete(match.players, playerID)
+	for i, id := range match.order {
+		if id == playerID {
+			match.order = append(match.order[:i], match.order[i+1:]...)
+			break
+		}
+	}
+}
+
 func (h *lobbyHub) unregister(client *lobbyClient) {
 	h.mu.Lock()
 	phase := client.phase
 	playerID := client.playerID
 	if phase == clientActive && h.activeMatch != nil {
-		delete(h.activeMatch.players, playerID)
+		removeFromMatchLocked(h.activeMatch, playerID)
 		h.game.Leave(playerID)
 		if len(h.activeMatch.players) == 0 {
 			h.activeMatch = nil
@@ -538,6 +551,9 @@ func (h *lobbyHub) sendMatchStateTo(client *lobbyClient) {
 	players := make([]lobbyPlayerDTO, 0, len(match.order))
 	for _, id := range match.order {
 		member := match.players[id]
+		if member == nil {
+			continue
+		}
 		players = append(players, lobbyPlayerDTO{ID: member.playerID, Nickname: member.nickname, Hat: member.hat})
 	}
 	message := struct {
