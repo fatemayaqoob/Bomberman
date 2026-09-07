@@ -31,7 +31,8 @@ export function createInitialUIState() {
         lobby: {
             players: [],
             phase: "waiting",
-            secondsRemaining: 20
+            secondsRemaining: 20,
+            countdownEndsAt: null
         },
         connection: { status: "idle", error: null },
         multiplayer: { players: [] },
@@ -42,6 +43,7 @@ export function createInitialUIState() {
             players: [],
             powerUps: [],
             gameOver: null,
+            notice: null,
             hud: {
                 lives: 3,
                 bombs: 1,
@@ -100,7 +102,10 @@ export function applyLobbyState(snapshot) {
     }));
 
     const phase = snapshot.state ?? "waiting";
-    const secondsRemaining = snapshot.countdown_seconds ?? (phase === "countdown" ? state.lobby.secondsRemaining : 20);
+    const countdownEndsAt = snapshot.countdown_ends_at ?? null;
+    const secondsRemaining = phase === "countdown" && countdownEndsAt
+        ? Math.max(0, Math.ceil((Date.parse(countdownEndsAt) - Date.now()) / 1000))
+        : snapshot.countdown_seconds ?? (phase === "countdown" ? state.lobby.secondsRemaining : 20);
 
     const localServerPlayer = players.find((player) => player.id === snapshot.self_id)
         ?? players.find((player) => player.nickname === state.localPlayer.nickname);
@@ -110,13 +115,13 @@ export function applyLobbyState(snapshot) {
 
     uiStore?.setState({
         localPlayer,
-        lobby: { ...state.lobby, players, phase, secondsRemaining },
+        lobby: { ...state.lobby, players, phase, secondsRemaining, countdownEndsAt },
         game: snapshot.match_seed
             ? { ...state.game, matchSeed: snapshot.match_seed }
             : state.game
     });
 
-    if (phase === "countdown") startCountdownDisplay(secondsRemaining);
+    if (phase === "countdown" && countdownEndsAt) startCountdownDisplay(countdownEndsAt);
     else stopCountdownDisplay();
 
     if (state.screen === "game") {
@@ -218,6 +223,9 @@ export function enterGame() {
                     ).filter((player) => player.alive),
                     powerUps: visualItems,
                     gameOver: engineState.gameOver,
+                    notice: local?.alive === false
+                        ? (local.lives > 0 ? "YOU LOST A LIFE" : "YOU LOST")
+                        : null,
                     hud: local ? {
                         ...current.game.hud,
                         lives: local.lives,
@@ -252,6 +260,9 @@ export function applySharedGameState(sharedState) {
             players: sharedState.players.filter((player) => player.alive),
             powerUps: visualItems,
             gameOver: sharedState.gameOver ?? null,
+            notice: local?.alive === false
+                ? (local.lives > 0 ? "YOU LOST A LIFE" : "YOU LOST")
+                : null,
             hud: local ? {
                 ...state.game.hud,
                 lives: local.lives,
@@ -273,6 +284,7 @@ export function leaveCurrentGame() {
             players: [],
             powerUps: [],
             gameOver: null,
+            notice: null,
             matchSeed: null,
             matchPlayers: []
         }
@@ -331,7 +343,9 @@ export function applyPlayerState(players = []) {
     });
 
     const knownIDs = new Set(normalized.map((player) => player.id));
-    for (const player of state.game.players) {
+    // Sweep the engine's full roster (not the alive-only render list) so a
+    // disconnected player is removed even if they were already eliminated.
+    for (const player of roster) {
         if (!knownIDs.has(player.id)) {
             stopGameRuntime?.removePlayer?.(player.id);
         }
@@ -445,16 +459,17 @@ function toClientDirection(direction) {
     return ({ up: "back", down: "front", left: "left", right: "right" })[direction] ?? "front";
 }
 
-function startCountdownDisplay(seconds) {
+function startCountdownDisplay(countdownEndsAt) {
     stopCountdownDisplay();
     countdownDisplayTimer = window.setInterval(() => {
         const state = getUIState();
-        if (state.lobby.phase !== "countdown" || state.lobby.secondsRemaining <= 0) {
+        const secondsRemaining = Math.max(0, Math.ceil((Date.parse(countdownEndsAt) - Date.now()) / 1000));
+        if (state.lobby.phase !== "countdown" || secondsRemaining <= 0) {
             stopCountdownDisplay();
             return;
         }
         uiStore?.setState({
-            lobby: { ...state.lobby, secondsRemaining: state.lobby.secondsRemaining - 1 }
+            lobby: { ...state.lobby, secondsRemaining }
         });
     }, 1000);
 }

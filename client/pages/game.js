@@ -9,6 +9,7 @@ import { requestPlayAgain } from "../network.js";
 
 export function GamePage({ state }) {
     const gameOver = state.game.gameOver;
+    const notice = state.game.notice;
     
     return element(
         "section",
@@ -25,6 +26,7 @@ export function GamePage({ state }) {
                 { className: "entity-layer", "aria-label": "Player preview" },
                 state.game.players.map((player) => element(Player, { player }))
             ),
+            notice ? element("div", { className: "game-notice", role: "status" }, notice) : null,
             gameOver ? element(
                 "div",
                 { className: "game-over-overlay" },
